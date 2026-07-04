@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { ChevronLeft, ChevronRight, ListTree, SlidersHorizontal } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Label } from "@/ui/label";
 import { Slider } from "@/ui/slider";
 
-export type LabCategory = "electromagnetism" | "thermodynamics" | "quantum-mechanics";
+export type LabCategory = "mechanics" | "electromagnetism" | "thermodynamics" | "quantum-mechanics";
 
 export type LabDefinition = {
   category: LabCategory;
@@ -45,12 +47,14 @@ type ParticleState = {
 };
 
 export const LAB_CATEGORY_LABELS: Record<LabCategory, string> = {
+  mechanics: "Mechanics",
   electromagnetism: "Electromagnetism",
   thermodynamics: "Thermodynamics",
   "quantum-mechanics": "Quantum Mechanics",
 };
 
 export const LAB_CATEGORY_ORDER: LabCategory[] = [
+  "mechanics",
   "electromagnetism",
   "thermodynamics",
   "quantum-mechanics",
@@ -109,10 +113,27 @@ function LabCanvas({ children }: { children: ReactNode }) {
   );
 }
 
-function ControlPanel({ children }: { children: ReactNode }) {
+function formatSliderValue(value: number, step: number, unit: string) {
+  const precision = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
+
+  return `${value.toFixed(precision)}${unit}`;
+}
+
+function ControlPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="absolute top-4 left-4 z-10 w-72 rounded-2xl border border-white/10 bg-black/55 p-4 text-white shadow-2xl backdrop-blur-xl">
-      {children}
+    <div className="absolute inset-x-3 bottom-3 z-10 max-h-[55%] overflow-y-auto rounded-2xl border border-white/10 bg-black/65 p-4 text-white shadow-2xl backdrop-blur-xl sm:top-4 sm:bottom-auto sm:left-4 sm:w-80 sm:max-h-[calc(100%-2rem)]">
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+        <div>
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">
+            Parameters
+          </div>
+          <div className="mt-1 text-sm font-semibold">{title}</div>
+        </div>
+        <div className="rounded-full border border-white/10 bg-white/10 p-2 text-cyan-100">
+          <SlidersHorizontal className="size-4" />
+        </div>
+      </div>
+      <div className="space-y-4">{children}</div>
     </div>
   );
 }
@@ -134,13 +155,14 @@ function SliderControl({
   unit?: string;
   onChange: (value: number) => void;
 }) {
+  const displayedValue = formatSliderValue(value, step, unit);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <Label className="text-xs text-white/70">{label}</Label>
-        <span className="font-mono text-xs text-white/60">
-          {value.toFixed(step < 0.1 ? 2 : 1)}
-          {unit}
+        <Label className="text-xs font-medium text-white/75">{label}</Label>
+        <span className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-xs text-white/80">
+          {displayedValue}
         </span>
       </div>
       <Slider
@@ -150,6 +172,10 @@ function SliderControl({
         step={step}
         onValueChange={([next]) => onChange(next ?? value)}
       />
+      <div className="flex justify-between font-mono text-[0.65rem] text-white/35">
+        <span>{formatSliderValue(min, step, unit)}</span>
+        <span>{formatSliderValue(max, step, unit)}</span>
+      </div>
     </div>
   );
 }
@@ -199,6 +225,335 @@ function heatColor(value: number) {
   const hue = 240 - 240 * v;
   const lightness = 16 + 48 * v;
   return `hsl(${hue} 95% ${lightness}%)`;
+}
+
+function ProjectileMotionSimulation() {
+  const [launchAngle, setLaunchAngle] = useState(42);
+  const [launchSpeed, setLaunchSpeed] = useState(7.4);
+  const [gravity, setGravity] = useState(9.8);
+
+  const canvasRef = useCanvasAnimation((ctx, width, height, time) => {
+    clearLabCanvas(ctx, width, height);
+
+    const angle = (launchAngle * Math.PI) / 180;
+    const vx = launchSpeed * Math.cos(angle);
+    const vy = launchSpeed * Math.sin(angle);
+    const flightTime = Math.max(0.1, (2 * vy) / gravity);
+    const range = vx * flightTime;
+    const maxHeight = (vy * vy) / (2 * gravity);
+    const plotX = width * 0.08;
+    const groundY = height * 0.82;
+    const plotW = width * 0.84;
+    const plotH = height * 0.58;
+    const scaleX = plotW / Math.max(range, 1);
+    const scaleY = plotH / Math.max(maxHeight * 1.35, 1);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    for (let line = 0; line <= 4; line++) {
+      const y = groundY - (line / 4) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(plotX, y);
+      ctx.lineTo(plotX + plotW, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.46)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(plotX, groundY);
+    ctx.lineTo(plotX + plotW, groundY);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(56,189,248,0.9)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 96; i++) {
+      const t = (i / 96) * flightTime;
+      const x = vx * t;
+      const y = vy * t - 0.5 * gravity * t * t;
+      const screenX = plotX + x * scaleX;
+      const screenY = groundY - y * scaleY;
+      if (i === 0) ctx.moveTo(screenX, screenY);
+      else ctx.lineTo(screenX, screenY);
+    }
+    ctx.stroke();
+
+    const currentTime = ((time * 0.24) % 1) * flightTime;
+    const projectileX = vx * currentTime;
+    const projectileY = vy * currentTime - 0.5 * gravity * currentTime * currentTime;
+    const screenX = plotX + projectileX * scaleX;
+    const screenY = groundY - projectileY * scaleY;
+
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawArrow(
+      ctx,
+      screenX,
+      screenY,
+      Math.min(54, vx * 8),
+      -(vy - gravity * currentTime) * 8,
+      "#fde68a",
+    );
+
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "13px ui-monospace";
+    ctx.fillText(`range ~= ${range.toFixed(1)} m`, plotX, height * 0.16);
+    ctx.fillText(`flight time ~= ${flightTime.toFixed(2)} s`, plotX, height * 0.16 + 22);
+  });
+
+  return (
+    <LabCanvas>
+      <canvas ref={canvasRef} className="absolute inset-0 size-full" />
+      <ControlPanel title="Projectile launch">
+        <div className="space-y-4">
+          <SliderControl
+            label="Launch angle"
+            value={launchAngle}
+            min={10}
+            max={80}
+            step={1}
+            unit=" deg"
+            onChange={setLaunchAngle}
+          />
+          <SliderControl
+            label="Launch speed"
+            value={launchSpeed}
+            min={3}
+            max={12}
+            step={0.1}
+            unit=" m/s"
+            onChange={setLaunchSpeed}
+          />
+          <SliderControl
+            label="Gravity"
+            value={gravity}
+            min={1.6}
+            max={16}
+            step={0.1}
+            unit=" m/s2"
+            onChange={setGravity}
+          />
+        </div>
+      </ControlPanel>
+    </LabCanvas>
+  );
+}
+
+function SpringMassSimulation() {
+  const [stiffness, setStiffness] = useState(1.4);
+  const [damping, setDamping] = useState(0.35);
+  const [drive, setDrive] = useState(0.4);
+
+  const canvasRef = useCanvasAnimation((ctx, width, height, time) => {
+    clearLabCanvas(ctx, width, height);
+
+    const centerY = height * 0.5;
+    const anchorX = width * 0.18;
+    const equilibriumX = width * 0.64;
+    const amplitude = 0.06 + 0.2 * (1 - damping / 1.2);
+    const displacement =
+      amplitude * Math.sin(time * Math.sqrt(stiffness) * 2.5) + drive * 0.08 * Math.sin(time * 1.8);
+    const massX = equilibriumX + displacement * width * 0.45;
+    const massW = Math.min(96, width * 0.14);
+    const massH = Math.min(86, height * 0.18);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(anchorX, centerY - 90);
+    ctx.lineTo(anchorX, centerY + 90);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(148,163,184,0.55)";
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(equilibriumX, centerY - 120);
+    ctx.lineTo(equilibriumX, centerY + 120);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = "#67e8f9";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(anchorX, centerY);
+    const springEnd = massX - massW / 2;
+    const springLength = springEnd - anchorX;
+    const turns = 14;
+    for (let i = 1; i <= turns * 2; i++) {
+      const x = anchorX + (i / (turns * 2)) * springLength;
+      const y = centerY + (i % 2 === 0 ? -18 : 18);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(springEnd, centerY);
+    ctx.stroke();
+
+    ctx.fillStyle = "#f97316";
+    ctx.fillRect(massX - massW / 2, centerY - massH / 2, massW, massH);
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.strokeRect(massX - massW / 2, centerY - massH / 2, massW, massH);
+
+    const potential = Math.min(1, 0.5 * stiffness * displacement * displacement * 10);
+    const kinetic = Math.min(
+      1,
+      Math.abs(Math.cos(time * Math.sqrt(stiffness) * 2.5)) * (1 - damping * 0.45),
+    );
+    const barX = width * 0.08;
+    const barY = height * 0.18;
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "13px ui-monospace";
+    ctx.fillText("energy exchange", barX, barY - 18);
+    ctx.fillStyle = "rgba(56,189,248,0.35)";
+    ctx.fillRect(barX, barY, width * 0.22, 12);
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(barX, barY, width * 0.22 * potential, 12);
+    ctx.fillStyle = "rgba(251,113,133,0.35)";
+    ctx.fillRect(barX, barY + 24, width * 0.22, 12);
+    ctx.fillStyle = "#fb7185";
+    ctx.fillRect(barX, barY + 24, width * 0.22 * kinetic, 12);
+  });
+
+  return (
+    <LabCanvas>
+      <canvas ref={canvasRef} className="absolute inset-0 size-full" />
+      <ControlPanel title="Driven spring-mass">
+        <div className="space-y-4">
+          <SliderControl
+            label="Spring stiffness"
+            value={stiffness}
+            min={0.4}
+            max={3}
+            step={0.1}
+            onChange={setStiffness}
+          />
+          <SliderControl
+            label="Damping"
+            value={damping}
+            min={0}
+            max={1.1}
+            step={0.05}
+            onChange={setDamping}
+          />
+          <SliderControl
+            label="Drive strength"
+            value={drive}
+            min={0}
+            max={1.4}
+            step={0.1}
+            onChange={setDrive}
+          />
+        </div>
+      </ControlPanel>
+    </LabCanvas>
+  );
+}
+
+function DampedPendulumSimulation() {
+  const [length, setLength] = useState(1.1);
+  const [gravity, setGravity] = useState(9.8);
+  const [damping, setDamping] = useState(0.22);
+  const [initialAngle, setInitialAngle] = useState(44);
+  const startTimeRef = useRef(0);
+
+  useEffect(() => {
+    startTimeRef.current = 0;
+  }, [length, gravity, damping, initialAngle]);
+
+  const canvasRef = useCanvasAnimation((ctx, width, height, time) => {
+    if (startTimeRef.current === 0) startTimeRef.current = time;
+
+    clearLabCanvas(ctx, width, height);
+    const localTime = time - startTimeRef.current;
+    const pivotX = width * 0.5;
+    const pivotY = height * 0.16;
+    const pixelLength = Math.min(width, height) * 0.3 * length;
+    const angle0 = (initialAngle * Math.PI) / 180;
+    const omega = Math.sqrt(gravity / length);
+    const angle = angle0 * Math.exp(-damping * localTime * 0.16) * Math.cos(omega * localTime);
+    const bobX = pivotX + Math.sin(angle) * pixelLength;
+    const bobY = pivotY + Math.cos(angle) * pixelLength;
+
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(pivotX, pivotY, pixelLength, Math.PI / 2 - angle0, Math.PI / 2 + angle0);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.65)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pivotX, pivotY);
+    ctx.lineTo(bobX, bobY);
+    ctx.stroke();
+
+    ctx.fillStyle = "#67e8f9";
+    ctx.beginPath();
+    ctx.arc(pivotX, pivotY, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.arc(bobX, bobY, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    const period = 2 * Math.PI * Math.sqrt(length / gravity);
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "13px ui-monospace";
+    ctx.fillText(`small-angle period ~= ${period.toFixed(2)} s`, width * 0.08, height * 0.82);
+    ctx.fillText(
+      `angle ~= ${((angle * 180) / Math.PI).toFixed(1)} deg`,
+      width * 0.08,
+      height * 0.82 + 22,
+    );
+  });
+
+  return (
+    <LabCanvas>
+      <canvas ref={canvasRef} className="absolute inset-0 size-full" />
+      <ControlPanel title="Damped pendulum">
+        <div className="space-y-4">
+          <SliderControl
+            label="String length"
+            value={length}
+            min={0.5}
+            max={1.8}
+            step={0.1}
+            unit=" m"
+            onChange={setLength}
+          />
+          <SliderControl
+            label="Gravity"
+            value={gravity}
+            min={1.6}
+            max={16}
+            step={0.1}
+            unit=" m/s2"
+            onChange={setGravity}
+          />
+          <SliderControl
+            label="Damping"
+            value={damping}
+            min={0}
+            max={0.9}
+            step={0.05}
+            onChange={setDamping}
+          />
+          <SliderControl
+            label="Initial angle"
+            value={initialAngle}
+            min={5}
+            max={75}
+            step={1}
+            unit=" deg"
+            onChange={setInitialAngle}
+          />
+        </div>
+      </ControlPanel>
+    </LabCanvas>
+  );
 }
 
 function ElectricFieldLinesSimulation() {
@@ -293,8 +648,7 @@ function ElectricFieldLinesSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Point-charge field</div>
+      <ControlPanel title="Point-charge field">
         <div className="space-y-4">
           <SliderControl
             label="Charge spacing"
@@ -440,8 +794,7 @@ function ChargedParticleMotionSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Lorentz-force trajectory</div>
+      <ControlPanel title="Lorentz-force trajectory">
         <div className="space-y-4">
           <SliderControl
             label="Electric field"
@@ -532,8 +885,7 @@ function ElectromagneticWaveSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">1D Maxwell FDTD</div>
+      <ControlPanel title="1D Maxwell FDTD">
         <div className="space-y-4">
           <SliderControl
             label="Source frequency"
@@ -602,8 +954,7 @@ function HeatDiffusionSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Heat equation plate</div>
+      <ControlPanel title="Heat equation plate">
         <div className="space-y-4">
           <SliderControl
             label="Diffusivity"
@@ -739,8 +1090,7 @@ function IdealGasSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Ideal gas particles</div>
+      <ControlPanel title="Ideal gas particles">
         <div className="space-y-4">
           <SliderControl
             label="Particle count"
@@ -818,8 +1168,7 @@ function BoltzmannDistributionSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Metropolis energy sampler</div>
+      <ControlPanel title="Metropolis energy sampler">
         <div className="space-y-4">
           <SliderControl
             label="Temperature"
@@ -902,8 +1251,7 @@ function ParticleInBoxSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Particle in a box</div>
+      <ControlPanel title="Particle in a box">
         <div className="space-y-4">
           <SliderControl
             label="Excited-state mix"
@@ -1005,8 +1353,7 @@ function QuantumTunnelingSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">Wave packet tunneling</div>
+      <ControlPanel title="Wave packet tunneling">
         <div className="space-y-4">
           <SliderControl
             label="Barrier height"
@@ -1119,8 +1466,7 @@ function QuantumWavePacket2DSimulation() {
   return (
     <LabCanvas>
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
-      <ControlPanel>
-        <div className="mb-4 text-sm font-medium">2D wave packet</div>
+      <ControlPanel title="2D wave packet">
         <div className="space-y-4">
           <SliderControl
             label="Initial spread"
@@ -1145,6 +1491,49 @@ function QuantumWavePacket2DSimulation() {
 }
 
 export const LAB_SIMULATIONS: LabDefinition[] = [
+  {
+    category: "mechanics",
+    slug: "projectile-motion",
+    title: "Projectile Motion",
+    summary: "Launch angle, speed, and gravity shape a ballistic trajectory.",
+    principle:
+      "Horizontal velocity stays constant while vertical velocity changes under uniform gravitational acceleration.",
+    equations: [
+      "x(t) = v0 cos(theta) t",
+      "y(t) = v0 sin(theta) t - 1/2 g t^2",
+      "R = v0^2 sin(2 theta) / g",
+    ],
+    method: "Analytic constant-acceleration kinematics sampled along the flight path.",
+    expectedOutput:
+      "The orange projectile follows the cyan parabola; higher launch speed increases range while stronger gravity shortens flight.",
+    component: ProjectileMotionSimulation,
+  },
+  {
+    category: "mechanics",
+    slug: "spring-mass-oscillator",
+    title: "Spring-Mass Oscillator",
+    summary: "A driven spring trades energy between motion and stored elastic potential.",
+    principle:
+      "Hooke's law pulls displacement back toward equilibrium while damping removes mechanical energy.",
+    equations: ["m x'' + c x' + kx = F0 sin(omega t)", "U = 1/2 kx^2"],
+    method: "Closed-form oscillator animation with damping and a sinusoidal drive term.",
+    expectedOutput:
+      "The spring compresses and stretches around the dashed equilibrium line while energy bars shift between kinetic and potential.",
+    component: SpringMassSimulation,
+  },
+  {
+    category: "mechanics",
+    slug: "damped-pendulum",
+    title: "Damped Pendulum",
+    summary: "Length, gravity, damping, and initial angle control pendulum motion.",
+    principle:
+      "For small angles, a pendulum behaves like a harmonic oscillator with period set by length and gravity.",
+    equations: ["theta'' + (g/L) sin(theta) = -b theta'", "T ~= 2 pi sqrt(L/g)"],
+    method: "Damped small-angle oscillator with a visual arc envelope and live period estimate.",
+    expectedOutput:
+      "The bob swings through a visible arc, decaying faster as damping rises and slowing down as the string length increases.",
+    component: DampedPendulumSimulation,
+  },
   {
     category: "electromagnetism",
     slug: "electric-field-lines",
@@ -1272,6 +1661,96 @@ export function getLabSimulationPath(simulation: Pick<LabDefinition, "category" 
   return `/simulations/${simulation.category}/${simulation.slug}`;
 }
 
+function SimulationNavigator({ currentSimulation }: { currentSimulation: LabDefinition }) {
+  const currentIndex = LAB_SIMULATIONS.findIndex(
+    (simulation) =>
+      simulation.category === currentSimulation.category &&
+      simulation.slug === currentSimulation.slug,
+  );
+  const previousSimulation =
+    LAB_SIMULATIONS[(currentIndex - 1 + LAB_SIMULATIONS.length) % LAB_SIMULATIONS.length];
+  const nextSimulation = LAB_SIMULATIONS[(currentIndex + 1) % LAB_SIMULATIONS.length];
+
+  return (
+    <Card className="border-border/40 bg-background/90 backdrop-blur-xl">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ListTree className="size-4" />
+            Simulation Navigator
+          </CardTitle>
+          <Badge variant="secondary">{LAB_SIMULATIONS.length} labs</Badge>
+        </div>
+        <CardDescription>Jump by topic or move through the lab sequence.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          <Button asChild variant="outline" size="sm" className="justify-start">
+            <Link to={getLabSimulationPath(previousSimulation)}>
+              <ChevronLeft className="size-4" />
+              Previous
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="justify-end">
+            <Link to={getLabSimulationPath(nextSimulation)}>
+              Next
+              <ChevronRight className="size-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {LAB_CATEGORY_ORDER.map((category) => {
+            const simulations = LAB_SIMULATIONS.filter(
+              (simulation) => simulation.category === category,
+            );
+
+            return (
+              <div key={category}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {LAB_CATEGORY_LABELS[category]}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{simulations.length}</span>
+                </div>
+                <div className="mt-2 grid gap-1">
+                  {simulations.map((simulation) => {
+                    const isActive =
+                      simulation.category === currentSimulation.category &&
+                      simulation.slug === currentSimulation.slug;
+
+                    return (
+                      <Button
+                        key={simulation.slug}
+                        asChild
+                        variant={isActive ? "default" : "ghost"}
+                        className="h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-xl px-3 py-2 text-left"
+                      >
+                        <Link to={getLabSimulationPath(simulation)}>
+                          <span className="block text-xs font-medium">{simulation.title}</span>
+                          <span
+                            className={
+                              isActive
+                                ? "block text-xs text-primary-foreground/70"
+                                : "block text-xs text-muted-foreground"
+                            }
+                          >
+                            {simulation.summary}
+                          </span>
+                        </Link>
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PhysicsLabRoute() {
   const params = useParams();
   const simulation = LAB_SIMULATIONS.find(
@@ -1314,6 +1793,8 @@ export function PhysicsLabRoute() {
             <CardDescription>{simulation.summary}</CardDescription>
           </CardHeader>
         </Card>
+
+        <SimulationNavigator currentSimulation={simulation} />
 
         <Card className="border-border/40 bg-background/90 backdrop-blur-xl">
           <CardHeader>

@@ -30,3 +30,19 @@
 - `yarn vp check` passed: formatting, linting, and type checking.
 - `yarn test` passed: 29 tests across 2 files.
 - `yarn build` passed and produced `dist/`.
+
+## 2026-07-04 Simulation UI, Navigation, and Deployment Plan
+
+- [x] Inspect current simulation routes, controls, navigation, and Cloudflare deployment setup.
+- [x] Standardize the lab simulation parameter panel so each lab exposes controls in the same place and style.
+- [x] Add grouped in-page simulation navigation with previous/next movement and active-state links.
+- [x] Add more simulations using the shared lab pattern.
+- [x] Run `vp check`, `vp test`, and `vp build`.
+- [ ] Review diff/status/log, commit intended changes, push, and deploy.
+
+## 2026-07-04 Review Notes
+
+- Added a Mechanics lab category with projectile motion, spring-mass oscillator, and damped pendulum simulations.
+- Reworked the lab parameter overlay into a reusable control surface with consistent labels, current values, and min/max ranges.
+- Added an in-page Simulation Navigator card with previous/next links and grouped active-state links.
+- Validation passed: `vp check`, `vp test`, `vp build`, and `yarn build`.
