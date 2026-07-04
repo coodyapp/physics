@@ -38,7 +38,7 @@
 - [x] Add grouped in-page simulation navigation with previous/next movement and active-state links.
 - [x] Add more simulations using the shared lab pattern.
 - [x] Run `vp check`, `vp test`, and `vp build`.
-- [ ] Review diff/status/log, commit intended changes, push, and deploy.
+- [x] Review diff/status/log, commit intended changes, push, and deploy.
 
 ## 2026-07-04 Review Notes
 
@@ -46,3 +46,4 @@
 - Reworked the lab parameter overlay into a reusable control surface with consistent labels, current values, and min/max ranges.
 - Added an in-page Simulation Navigator card with previous/next links and grouped active-state links.
 - Validation passed: `vp check`, `vp test`, `vp build`, and `yarn build`.
+- Deployed from commit `cc46cc3` through CD run `28722725848`; Cloudflare Pages deployment passed and `https://physics.coody.app/simulations/mechanics/projectile-motion` returned the app shell.
