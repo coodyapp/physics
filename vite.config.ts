@@ -1,4 +1,4 @@
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
 import tailwindcss from "@tailwindcss/vite";
 
