@@ -152,6 +152,76 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+
+  --animate-glitch-top: glitch-top 0.5s ease infinite alternate-reverse;
+  --animate-glitch-bottom: glitch-bottom 0.5s ease infinite alternate-reverse;
+}
+
+@keyframes glitch-top {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes glitch-bottom {
+  0%,
+  100% {
+    transform: translateX(2px);
+  }
+
+  50% {
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes home-appear {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@layer utilities {
+  .home-appear {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: home-appear 0.8s cubic-bezier(0.1, 0, 0.175, 1) forwards;
+  }
+
+  .home-appear-first {
+    animation-delay: 0.3s;
+  }
+
+  .home-appear-second {
+    animation-delay: 0.65s;
+  }
+
+  .home-appear-third {
+    animation-delay: 1s;
+  }
+
+  .home-marquee-track {
+    animation: home-marquee var(--home-marquee-duration, 44s) linear infinite;
+  }
+
+  .home-marquee-track-reverse {
+    animation-direction: reverse;
+  }
 }
 
 @layer base {

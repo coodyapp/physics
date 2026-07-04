@@ -1,10 +1,28 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/ui/button";
-import { Moon, Sun, Home, Orbit, Waves, Sparkles } from "lucide-react";
+import { Moon, Sun, Home } from "lucide-react";
 import { useTheme } from "@/ui/theme-provider";
+import {
+  getLabSimulationPath,
+  LAB_CATEGORY_LABELS,
+  LAB_CATEGORY_ORDER,
+  LAB_SIMULATIONS,
+} from "@/simulations/physics-labs";
+
+const LEGACY_SIMULATIONS = [
+  { title: "Mass Effect", href: "/simulations/mass-effect" },
+  { title: "Gravitational Waves", href: "/simulations/gravitational-waves" },
+  { title: "Mercury Precession", href: "/simulations/mercury-precession" },
+] as const;
 
 export default function Header() {
   const { theme, setTheme } = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const knownPaths = new Set([
+    ...LEGACY_SIMULATIONS.map((simulation) => simulation.href),
+    ...LAB_SIMULATIONS.map((simulation) => getLabSimulationPath(simulation)),
+  ]);
 
   return (
     <header className="rounded-full border border-border/40 bg-background/80 backdrop-blur-xl shadow-2xl">
@@ -18,26 +36,34 @@ export default function Header() {
 
         <div className="h-4 w-px bg-border/40" />
 
-        <Link to="/simulations/mass-effect">
-          <Button variant="ghost" size="sm" className="rounded-full gap-2 text-xs">
-            <Orbit className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Mass Effect</span>
-          </Button>
-        </Link>
-
-        <Link to="/simulations/gravitational-waves">
-          <Button variant="ghost" size="sm" className="rounded-full gap-2 text-xs">
-            <Waves className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Gravitational Waves</span>
-          </Button>
-        </Link>
-
-        <Link to="/simulations/mercury-precession">
-          <Button variant="ghost" size="sm" className="rounded-full gap-2 text-xs">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Mercury Precession</span>
-          </Button>
-        </Link>
+        <select
+          aria-label="Choose simulation"
+          value={knownPaths.has(location.pathname) ? location.pathname : ""}
+          onChange={(event) => navigate(event.target.value)}
+          className="h-8 max-w-[210px] rounded-full border border-border/40 bg-background px-3 text-xs text-foreground outline-none sm:max-w-[280px]"
+        >
+          <option value="" disabled>
+            Simulations
+          </option>
+          <optgroup label="Relativity">
+            {LEGACY_SIMULATIONS.map((simulation) => (
+              <option key={simulation.href} value={simulation.href}>
+                {simulation.title}
+              </option>
+            ))}
+          </optgroup>
+          {LAB_CATEGORY_ORDER.map((category) => (
+            <optgroup key={category} label={LAB_CATEGORY_LABELS[category]}>
+              {LAB_SIMULATIONS.filter((simulation) => simulation.category === category).map(
+                (simulation) => (
+                  <option key={simulation.slug} value={getLabSimulationPath(simulation)}>
+                    {simulation.title}
+                  </option>
+                ),
+              )}
+            </optgroup>
+          ))}
+        </select>
 
         <div className="h-4 w-px bg-border/40" />
 

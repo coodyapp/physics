@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  www:
+    name: www
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: yarn
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install
+        run: yarn install --immutable
+      - name: Check
+        run: yarn vp check
+      - name: Test
+        run: yarn test
+      - name: Build
+        run: yarn build

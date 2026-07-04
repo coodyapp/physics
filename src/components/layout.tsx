@@ -5,9 +5,13 @@ import Footer from "./footer";
 export default function Layout() {
   const location = useLocation();
   const isSimulationPage = location.pathname.startsWith("/simulations");
+  const containerClassName = isSimulationPage
+    ? "relative h-screen w-screen overflow-hidden bg-background"
+    : "relative min-h-screen w-screen overflow-x-hidden bg-background";
+  const mainClassName = isSimulationPage ? "h-full w-full" : "min-h-screen w-full";
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background">
+    <div className={containerClassName}>
       {/* Floating Header - Only show on simulation pages */}
       {isSimulationPage && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
@@ -18,7 +22,7 @@ export default function Layout() {
       )}
 
       {/* Main Content - Full Screen */}
-      <main className="h-full w-full">
+      <main className={mainClassName}>
         <Outlet />
       </main>
 
