@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "default",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "hooks": "@/hooks",
+    "utils": "@/utils",
+    "math": "@/math",
+    "physics": "@/physics",
+    "simulations": "@/simulations",
+    "styles": "@/styles",
+    "ui": "@/ui"
+  },
+  "iconLibrary": "lucide"
+}

@@ -1,0 +1,251 @@
+import { describe, it, expect } from "vite-plus/test";
+import { Vector3 } from "three";
+import { PHYSICS_CONSTANTS } from "@/utils/constants";
+import {
+  calculateGravitationalForce,
+  calculateGravitationalAcceleration,
+  schwarzschildRadius,
+  escapeVelocity,
+  calculateBinarySystem,
+  calculateSpacetimeCurvatureSimple,
+  type CelestialBody,
+} from "@/physics/gravity";
+import {
+  calculateGravitationalWaveAmplitude,
+  calculateStrainTensor,
+  type WaveSource,
+} from "@/physics/gravitational";
+import { GravitationalWavesService } from "@/physics/gravitational-waves.service";
+import { PhysicsService } from "@/physics/physics.service";
+import { SpacetimeService, GravitationalWaveService } from "@/physics/spacetime";
+
+const { G, c, M_sun, R_earth } = PHYSICS_CONSTANTS;
+
+function body(pos: [number, number, number], mass: number): CelestialBody {
+  return {
+    position: new Vector3(...pos),
+    velocity: new Vector3(),
+    mass,
+    radius: 1,
+  };
+}
+
+describe("PHYSICS_CONSTANTS", () => {
+  it("uses current CODATA values", () => {
+    expect(G).toBeCloseTo(6.6743e-11, 4);
+    expect(c).toBe(299792458);
+    expect(M_sun).toBeCloseTo(1.989e30, 0);
+  });
+});
+
+describe("gravity — Newtonian gravity", () => {
+  it("calculateGravitationalForce follows F = G m1 m2 / r^2", () => {
+    const b1 = body([0, 0, 0], 1e10);
+    const b2 = body([100, 0, 0], 2e10);
+    const f = calculateGravitationalForce(b1, b2);
+    const expected = (G * 1e10 * 2e10) / 100 ** 2;
+    expect(f.length()).toBeCloseTo(expected, 6);
+    // Force on body1 points toward body2 (positive x).
+    expect(f.x).toBeGreaterThan(0);
+    expect(Math.abs(f.y)).toBeCloseTo(0, 10);
+    expect(Math.abs(f.z)).toBeCloseTo(0, 10);
+  });
+
+  it("returns zero force below the softening threshold", () => {
+    const b1 = body([0, 0, 0], 1);
+    const b2 = body([0.0005, 0, 0], 1);
+    expect(calculateGravitationalForce(b1, b2).length()).toBe(0);
+  });
+
+  it("calculateGravitationalAcceleration computes a = F / m", () => {
+    const b = body([0, 0, 0], 5);
+    const f = new Vector3(10, 0, 0);
+    const a = calculateGravitationalAcceleration(b, f);
+    expect(a.x).toBeCloseTo(2, 10);
+  });
+
+  it("schwarzschildRadius matches the Sun (~2954 m)", () => {
+    const rs = schwarzschildRadius(M_sun);
+    expect(rs).toBeCloseTo(2954, -2);
+  });
+
+  it("escapeVelocity matches Earth's (~11.2 km/s)", () => {
+    const v = escapeVelocity(5.972e24, R_earth);
+    expect(v).toBeCloseTo(11186, -2);
+  });
+});
+
+describe("gravity — visualization helpers", () => {
+  it("calculateBinarySystem is symmetric under mass swap and negative at the centre well", () => {
+    const phase = 0;
+    const v = calculateBinarySystem(0, 0, 3, 3, 5, phase);
+    const vSwap = calculateBinarySystem(0, 0, 3, 3, 5, phase);
+    expect(v).toBe(vSwap);
+    // Potential is negative (a well).
+    expect(v).toBeLessThan(0);
+  });
+
+  it("calculateSpacetimeCurvatureSimple falls off with distance and is negative", () => {
+    const near = calculateSpacetimeCurvatureSimple(1, 0, 1);
+    const far = calculateSpacetimeCurvatureSimple(10, 0, 1);
+    expect(near).toBeLessThan(0);
+    expect(Math.abs(far)).toBeLessThan(Math.abs(near));
+  });
+});
+
+describe("gravitational — gravitational waves", () => {
+  const baseSource: WaveSource = {
+    position: new Vector3(0, 0, 0),
+    mass1: 1.4 * M_sun,
+    mass2: 1.4 * M_sun,
+    orbitalRadius: 1e6,
+    orbitalFrequency: 100,
+  };
+
+  it("uses the correct chirp mass M_c = (m1 m2)^(3/5) / (m1+m2)^(1/5)", () => {
+    // Equal masses: M_c = m / 2^(1/5).
+    const m = 1.4 * M_sun;
+    const expected = m / Math.pow(2, 1 / 5);
+    // Reconstruct chirp mass from the amplitude ratio at unit distance & frequency.
+    // h = 4 (G M_c)^(5/3) (pi f)^(2/3) / (c^4 r)  =>  M_c = (h c^4 r / (4 (pi f)^(2/3)))^(3/5) / G
+    const r = 1e20;
+    const f = 100;
+    const h0 = calculateGravitationalWaveAmplitude(
+      { ...baseSource, orbitalFrequency: f },
+      new Vector3(r, 0, 0),
+      0,
+    );
+    const amp = Math.abs(h0); // cos(0) = 1
+    const mc = Math.pow((amp * c ** 4 * r) / (4 * Math.pow(Math.PI * f, 2 / 3)), 3 / 5) / G;
+    // Relative check (values are ~1e30, so absolute toBeCloseTo is not meaningful).
+    expect(mc / expected).toBeCloseTo(1, 10);
+  });
+
+  it("amplitude scales as 1 / distance", () => {
+    const r1 = 1e20;
+    const r2 = 2e20;
+    const h1 = Math.abs(calculateGravitationalWaveAmplitude(baseSource, new Vector3(r1, 0, 0), 0));
+    const h2 = Math.abs(calculateGravitationalWaveAmplitude(baseSource, new Vector3(r2, 0, 0), 0));
+    expect(h1 / h2).toBeCloseTo(2, 6);
+  });
+
+  it("amplitude oscillates as cos(2 pi f t)", () => {
+    const f = baseSource.orbitalFrequency;
+    const observer = new Vector3(1e20, 0, 0);
+    const h0 = calculateGravitationalWaveAmplitude(baseSource, observer, 0);
+    const hQuarter = calculateGravitationalWaveAmplitude(baseSource, observer, 1 / (4 * f));
+    // cos(0) = 1, cos(pi/2) = 0.
+    expect(Math.abs(h0)).toBeGreaterThan(0);
+    expect(Math.abs(hQuarter)).toBeCloseTo(0, 6);
+  });
+
+  it("calculateStrainTensor builds plus and cross polarizations", () => {
+    const plus = calculateStrainTensor(1, "plus");
+    const cross = calculateStrainTensor(1, "cross");
+    expect(plus[0][0]).toBe(1);
+    expect(plus[1][1]).toBe(-1);
+    expect(cross[0][1]).toBe(1);
+    expect(cross[1][0]).toBe(1);
+  });
+});
+
+describe("GravitationalWavesService", () => {
+  it("calculateFrequency follows Kepler's third law f = sqrt(GM/a^3) / (2 pi)", () => {
+    const f = GravitationalWavesService.calculateFrequency(M_sun, M_sun, 1e9);
+    const expected = Math.sqrt((G * (2 * M_sun)) / 1e9 ** 3) / (2 * Math.PI);
+    expect(f).toBeCloseTo(expected, 8);
+  });
+
+  it("strain amplitude scales as 1 / distance and as M_c^(5/3)", () => {
+    const a1 = GravitationalWavesService.calculateStrainAmplitude(
+      1.4 * M_sun,
+      1.4 * M_sun,
+      1e20,
+      100,
+    );
+    const a2 = GravitationalWavesService.calculateStrainAmplitude(
+      1.4 * M_sun,
+      1.4 * M_sun,
+      2e20,
+      100,
+    );
+    expect(a1 / a2).toBeCloseTo(2, 6);
+
+    // Double the chirp mass (equal-mass doubling) -> amplitude grows by 2^(5/3).
+    const aSingle = GravitationalWavesService.calculateStrainAmplitude(M_sun, M_sun, 1e20, 100);
+    const aDouble = GravitationalWavesService.calculateStrainAmplitude(
+      2 * M_sun,
+      2 * M_sun,
+      1e20,
+      100,
+    );
+    // M_c scales linearly with mass for fixed mass ratio, so ratio = 2^(5/3).
+    expect(aDouble / aSingle).toBeCloseTo(Math.pow(2, 5 / 3), 6);
+  });
+});
+
+describe("PhysicsService", () => {
+  it("computes Newtonian force, orbital & escape velocities, Schwarzschild radius", () => {
+    expect(PhysicsService.calculateGravitationalForce(1, 1, 1)).toBeCloseTo(G, 10);
+    expect(PhysicsService.calculateOrbitalVelocity(M_sun, 1e9)).toBeCloseTo(
+      Math.sqrt((G * M_sun) / 1e9),
+      8,
+    );
+    expect(PhysicsService.calculateEscapeVelocity(M_sun, 1e9)).toBeCloseTo(
+      Math.sqrt((2 * G * M_sun) / 1e9),
+      8,
+    );
+    expect(PhysicsService.schwarzschildRadius(M_sun)).toBeCloseTo(2954, -2);
+  });
+
+  it("spacetime curvature is the Newtonian potential -rs / (2r)", () => {
+    const k = PhysicsService.calculateSpacetimeCurvature(
+      M_sun,
+      new Vector3(1e9, 0, 0),
+      new Vector3(0, 0, 0),
+    );
+    const rs = PhysicsService.schwarzschildRadius(M_sun);
+    expect(k).toBeCloseTo(-rs / (2 * 1e9), 10);
+  });
+});
+
+describe("SpacetimeService", () => {
+  it("throws inside the Schwarzschild radius and builds the metric outside", () => {
+    const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    expect(() =>
+      SpacetimeService.calculateMetricTensor(new Vector3(rs / 2, 0, 0), M_sun),
+    ).toThrow();
+    const m = SpacetimeService.calculateMetricTensor(new Vector3(10 * rs, 0, 0), M_sun);
+    expect(m.elements[0]).toBeCloseTo(-(1 - rs / (10 * rs)), 10); // g_tt
+    expect(m.elements[5]).toBeCloseTo(1 / (1 - rs / (10 * rs)), 10); // g_rr
+  });
+
+  it("time dilation -> 0 at the horizon and -> 1 far away", () => {
+    const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    expect(SpacetimeService.calculateTimeDilation(rs * 1.1, M_sun)).toBeCloseTo(
+      Math.sqrt(1 - 1 / 1.1),
+      6,
+    );
+    expect(SpacetimeService.calculateTimeDilation(1e12, M_sun)).toBeCloseTo(1, 4);
+  });
+
+  it("orbital velocity is sqrt(GM/r)", () => {
+    expect(SpacetimeService.calculateOrbitalVelocity(1e9, M_sun)).toBeCloseTo(
+      Math.sqrt((G * M_sun) / 1e9),
+      8,
+    );
+  });
+
+  it("Ricci scalar scales as M / r^3", () => {
+    const near = SpacetimeService.calculateRicciScalar(1, 0, 1);
+    const far = SpacetimeService.calculateRicciScalar(2, 0, 1);
+    expect(near / far).toBeCloseTo(8, 6); // 1/r^3 -> 2x distance = 1/8
+  });
+
+  it("wave distortion is zero for zero amplitude and oscillates otherwise", () => {
+    expect(GravitationalWaveService.calculateWaveDistortion(1, 0, 0, 0, 1)).toBe(0);
+    const a = GravitationalWaveService.calculateWaveDistortion(1, 0, 0, 1, 1);
+    const b = GravitationalWaveService.calculateWaveDistortion(1, 0, Math.PI / 2, 1, 1);
+    expect(a).not.toBeCloseTo(b, 6);
+  });
+});
