@@ -11,6 +11,9 @@ interface FloatingSimulationLayoutProps {
   controls: ReactNode;
   information: ReactNode;
   children: ReactNode;
+  cameraPosition?: [number, number, number];
+  cameraFov?: number;
+  cameraTarget?: [number, number, number];
 }
 
 export function FloatingSimulationLayout({
@@ -19,13 +22,22 @@ export function FloatingSimulationLayout({
   controls,
   information,
   children,
+  cameraPosition,
+  cameraFov,
+  cameraTarget,
 }: FloatingSimulationLayoutProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [showAxis, setShowAxis] = useState(true);
 
   return (
     <div className="h-screen w-full relative">
-      <Renderer showGrid={showGrid} showAxis={showAxis}>
+      <Renderer
+        showGrid={showGrid}
+        showAxis={showAxis}
+        cameraPosition={cameraPosition}
+        cameraFov={cameraFov}
+        cameraTarget={cameraTarget}
+      >
         {children}
       </Renderer>
 

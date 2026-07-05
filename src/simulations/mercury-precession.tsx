@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { FloatingSimulationLayout } from "@/components/floating-simulation-layout";
 import { NumberSlider } from "@/components/number-slider";
-import { BaseSimulation } from "./base/base-simulation";
 import { Label } from "@/ui/label";
 import { Button } from "@/ui/button";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -440,11 +440,12 @@ function MercuryPrecessionSimulation() {
   };
 
   return (
-    <BaseSimulation
-      title="Mercury Precession (GR)"
-      description="Observe orbital precession caused by Einstein's general relativity"
-      renderControls={renderControls}
-      renderInfo={renderInfo}
+    <FloatingSimulationLayout
+      controlsTitle="Mercury Precession Controls"
+      informationTitle="Mercury Precession (GR)"
+      controls={renderControls()}
+      information={renderInfo()}
+      cameraPosition={[0, 0, 30]}
     >
       <MercuryPrecessionScene
         starMass={starMass}
@@ -454,7 +455,7 @@ function MercuryPrecessionSimulation() {
         showRelativity={showRelativity}
         onBodyClick={handleBodyClick}
       />
-    </BaseSimulation>
+    </FloatingSimulationLayout>
   );
 }
 

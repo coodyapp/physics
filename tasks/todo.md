@@ -75,3 +75,19 @@
 - Removed high-confidence dead code: stale n-body route comments, unused `mesh.tsx`, and unused simulation interface types.
 - Added regression coverage; local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.
 - Deployed refactor commit `984e0d4` through CD run `28724069146`; Cloudflare Pages deployment passed.
+
+## 2026-07-04 Single Control and 3D Simulation Plan
+
+- [x] Confirm remaining inconsistency: labs still use canvas overlay controls and Mercury still uses the old side-tab `BaseSimulation` shell.
+- [x] Extend the shared floating simulation layout enough to support every simulation route.
+- [x] Replace all lab canvas visualizations with React Three Fiber 3D scenes and move every parameter into the shared right-side controls panel.
+- [x] Migrate Mercury Precession from `BaseSimulation` to `FloatingSimulationLayout`.
+- [x] Delete the now-unused `BaseSimulation` shell.
+- [ ] Run local validation, commit intended changes only, push, and verify CD deployment.
+
+## 2026-07-04 Single Control and 3D Simulation Results
+
+- All simulation routes now use the same `FloatingSimulationLayout` controls/info pattern.
+- Lab simulations were converted from 2D canvas overlays to React Three Fiber 3D scenes with shared right-side parameter controls.
+- Mercury Precession no longer uses the old side-tab `BaseSimulation`; that shell was removed.
+- Local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.

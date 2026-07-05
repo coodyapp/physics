@@ -6,12 +6,22 @@ interface RendererProps {
   children: ReactNode;
   showGrid?: boolean;
   showAxis?: boolean;
+  cameraPosition?: [number, number, number];
+  cameraFov?: number;
+  cameraTarget?: [number, number, number];
 }
 
-export default function Renderer({ children, showGrid = true, showAxis = true }: RendererProps) {
+export default function Renderer({
+  children,
+  showGrid = true,
+  showAxis = true,
+  cameraPosition = [10, 10, 10],
+  cameraFov = 50,
+  cameraTarget = [0, 0, 0],
+}: RendererProps) {
   return (
     <div className="absolute inset-0 w-full h-full">
-      <Canvas camera={{ position: [10, 10, 10], fov: 50 }}>
+      <Canvas camera={{ position: cameraPosition, fov: cameraFov }}>
         <ambientLight intensity={0.5} />
 
         {showGrid && (
@@ -37,7 +47,7 @@ export default function Renderer({ children, showGrid = true, showAxis = true }:
 
         {children}
 
-        <OrbitControls makeDefault />
+        <OrbitControls makeDefault target={cameraTarget} />
       </Canvas>
     </div>
   );
