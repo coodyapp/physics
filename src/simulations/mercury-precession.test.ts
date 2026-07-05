@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vite-plus/test";
+import { Vector3 } from "three";
 import { PHYSICS_CONSTANTS } from "@/utils/constants";
 import {
+  advanceOrbitState,
   calculatePrecessionPerOrbit,
   calculateRealPrecessionPerOrbit,
   calculateOrbitalVelocity,
@@ -72,5 +74,21 @@ describe("Mercury precession — simulation units", () => {
   it("orbital velocity at r = a (circular) is sqrt(GM/a)", () => {
     const v = calculateOrbitalVelocity(M_sun, a, a);
     expect(v).toBeCloseTo(Math.sqrt(1 / a), 6);
+  });
+
+  it("advances velocity with the full velocity-Verlet kick", () => {
+    const radius = 8;
+    const dt = 0.1;
+    const next = advanceOrbitState(
+      {
+        position: new Vector3(radius, 0, 0),
+        velocity: new Vector3(0, calculateOrbitalVelocity(M_sun, radius, radius), 0),
+      },
+      M_sun,
+      false,
+      dt,
+    );
+
+    expect(next.velocity.x).toBeCloseTo(-dt / radius ** 2, 4);
   });
 });

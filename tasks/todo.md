@@ -92,3 +92,40 @@
 - Mercury Precession no longer uses the old side-tab `BaseSimulation`; that shell was removed.
 - Local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.
 - Deployed commit `c67f62b` through CD run `28726235727`; Cloudflare Pages deployment passed.
+
+## 2026-07-04 Homepage Simulation Wave Text Plan
+
+- [x] Replace scientist-name hero rotation with names sourced from the available simulation routes.
+- [x] Replace the sphere-backed text treatment with a no-sphere animated wave-line background behind regular text.
+- [x] Remove the glitter and sphere WebGL background layers.
+- [x] Provide static text when WebGL is unavailable or motion is reduced.
+- [x] Run local validation and record results.
+
+## 2026-07-04 Homepage Simulation Wave Text Results
+
+- Homepage hero and carousel now use available simulation titles from direct simulation routes plus `LAB_SIMULATIONS`.
+- Homepage hero now uses available simulation titles from direct simulation routes plus `LAB_SIMULATIONS`; the horizontal marquee keeps scrolling scientist names.
+- Simulation names render as normal foreground text while a lightweight WebGL shader draws larger animated wave lines behind the text.
+- Removed the old glitch text, glitter background, sphere background, and unused WebGL background wrapper.
+- Validation passed: `vp check`, `vp test` (35 tests), and `vp build`.
+
+## 2026-07-05 Simulation Review and Camera Plan
+
+- [x] Audit every routed simulation and shared physics helper for concrete physics or implementation problems.
+- [x] Add a shared 2D/3D camera selector and view-direction selector so every simulation gets the same controls.
+- [x] Fix high-confidence simulation issues without changing route structure or unrelated UI.
+- [x] Add or update regression tests for corrected physics behavior where practical.
+- [x] Run `vp check`, `vp test`, and `vp build`, then record results.
+
+## 2026-07-05 Review Notes
+
+- All simulation routes currently flow through `FloatingSimulationLayout`, directly or through `LabSimulationLayout`, so global camera controls belong in the shared layout/renderer path.
+- Confirmed issues to fix in this pass: Mercury uses only the first half-step of velocity Verlet, Mercury reset can leave extra bodies in scene state, EM wave E and B curves are out of phase, gravitational-wave frequency should be separated from orbital frequency, several controls have no or truncated effect, and electric-field lines do not use Coulomb superposition.
+
+## 2026-07-05 Simulation Review Results
+
+- Added shared camera controls to every simulation: perspective 3D, orthographic 2D, and selectable isometric/XY/XZ/YZ view directions.
+- Fixed Mercury's orbit integration to use the full velocity-Verlet velocity update, and reset now reinitializes scene bodies.
+- Fixed simulation correctness issues: Coulomb-superposed electric field lines, speed-scaled charged-particle gyro-radius, in-phase EM E/B waves, flattening heat diffusion, full ideal-gas particle count, meaningful Boltzmann density-of-states control, actual tunneling reset, wave-packet potential scattering, central-mass visual scaling, and GW frequency = 2x orbital frequency.
+- Added a Mercury integrator regression test.
+- Validation passed: `vp check`, `vp test` (36 tests), and `vp build`.

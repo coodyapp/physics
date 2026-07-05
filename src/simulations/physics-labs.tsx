@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
@@ -44,8 +44,12 @@ export const LAB_CATEGORY_ORDER: LabCategory[] = [
   "quantum-mechanics",
 ];
 
-function useAnimationTime(speed = 1) {
+function useAnimationTime(speed = 1, resetKey = 0) {
   const [time, setTime] = useState(0);
+
+  useEffect(() => {
+    setTime(0);
+  }, [resetKey]);
 
   useFrame((_, delta) => {
     setTime((value) => value + delta * speed);
@@ -434,38 +438,67 @@ function ElectricFieldScene({
   separation: number;
   chargeRatio: number;
 }) {
-  const charges = [
-    { x: -separation * 1.8, q: 1, color: "#38bdf8" },
-    { x: separation * 1.8, q: chargeRatio, color: "#fb7185" },
-  ];
+  const charges = useMemo(
+    () => [
+      { x: -separation * 1.8, q: 1, color: "#38bdf8" },
+      {
+        x: separation * 1.8,
+        q: chargeRatio,
+        color: chargeRatio === 0 ? "#94a3b8" : chargeRatio > 0 ? "#38bdf8" : "#fb7185",
+      },
+    ],
+    [chargeRatio, separation],
+  );
   const lines = useMemo(() => {
-    return charges.flatMap((charge) =>
-      Array.from({ length: 12 }, (_, line) => {
-        const angle = (line / 12) * Math.PI * 2;
-        const points: [number, number, number][] = [];
-        for (let step = 0; step < 36; step++) {
-          const radius = 0.35 + step * 0.13;
-          const bend = charge.q > 0 ? 0.35 * Math.sin(step * 0.12) : -0.35 * Math.sin(step * 0.12);
-          points.push([
-            charge.x + Math.cos(angle + bend) * radius,
-            Math.sin(angle + bend) * radius,
-            Math.sin(step * 0.15 + angle) * 0.35,
-          ]);
+    const activeCharges = charges.filter((charge) => Math.abs(charge.q) > 1e-6);
+
+    function fieldAt(point: THREE.Vector2) {
+      return activeCharges.reduce((field, charge) => {
+        const dx = point.x - charge.x;
+        const dy = point.y;
+        const r2 = Math.max(dx * dx + dy * dy, 0.12);
+        const strength = charge.q / (r2 * Math.sqrt(r2));
+        field.x += dx * strength;
+        field.y += dy * strength;
+        return field;
+      }, new THREE.Vector2());
+    }
+
+    return activeCharges.flatMap((charge) => {
+      const seedCount = Math.max(4, Math.round(12 * Math.min(2, Math.abs(charge.q))));
+
+      return Array.from({ length: seedCount }, (_, line) => {
+        const angle = (line / seedCount) * Math.PI * 2;
+        const point = new THREE.Vector2(charge.x + Math.cos(angle) * 0.36, Math.sin(angle) * 0.36);
+        const direction = charge.q > 0 ? 1 : -1;
+        const points: [number, number, number][] = [[point.x, point.y, 0]];
+
+        for (let step = 0; step < 90; step++) {
+          const field = fieldAt(point);
+          if (field.lengthSq() < 1e-8) break;
+
+          point.add(field.normalize().multiplyScalar(direction * 0.11));
+          points.push([point.x, point.y, Math.sin(step * 0.18 + angle) * 0.12]);
+
+          if (point.length() > 6) break;
+          if (
+            activeCharges.some(
+              (other) => other !== charge && point.distanceTo(new THREE.Vector2(other.x, 0)) < 0.42,
+            )
+          ) {
+            break;
+          }
         }
-        return points;
-      }),
-    );
-  }, [chargeRatio, separation]);
+
+        return { points, color: charge.color };
+      });
+    });
+  }, [charges]);
 
   return (
     <group>
-      {lines.map((points, index) => (
-        <Line
-          key={index}
-          points={points}
-          color={index < 12 ? "#38bdf8" : "#fb7185"}
-          lineWidth={1.4}
-        />
+      {lines.map((line, index) => (
+        <Line key={index} points={line.points} color={line.color} lineWidth={1.4} />
       ))}
       {charges.map((charge) => (
         <mesh key={charge.x} position={[charge.x, 0, 0]}>
@@ -525,17 +558,19 @@ function ChargedParticleScene({
   speed: number;
 }) {
   const time = useAnimationTime(0.8);
-  const radius = 1.4 / magneticField;
+  const radius = Math.max(0.35, (speed * 1.3) / magneticField);
+  const cyclotronFrequency = magneticField * 2.4;
+  const electricDrift = electricField / (magneticField * magneticField);
   const trail = useMemo(() => {
     return Array.from({ length: 160 }, (_, index) => {
       const t = time - (159 - index) * 0.035;
       return [
-        Math.cos(t * magneticField * 2.4) * radius + electricField * t * 0.2,
-        Math.sin(t * magneticField * 2.4) * radius,
+        Math.cos(t * cyclotronFrequency) * radius + electricDrift * t * 0.35,
+        Math.sin(t * cyclotronFrequency) * radius,
         ((t * speed * 0.45) % 5) - 2.5,
       ] as [number, number, number];
     });
-  }, [electricField, magneticField, radius, speed, time]);
+  }, [cyclotronFrequency, electricDrift, radius, speed, time]);
   const particle = trail[trail.length - 1];
 
   return (
@@ -624,7 +659,7 @@ function ElectromagneticWaveScene({ frequency, courant }: { frequency: number; c
     () =>
       Array.from({ length: 140 }, (_, index) => {
         const x = -5 + (index / 139) * 10;
-        return [x, 0, Math.cos(x * 1.8 - time * frequency * Math.PI * 2) * 1.2 * courant] as [
+        return [x, 0, Math.sin(x * 1.8 - time * frequency * Math.PI * 2) * 1.2 * courant] as [
           number,
           number,
           number,
@@ -697,10 +732,8 @@ function HeatDiffusionScene({
         const x = (index % cells) - (cells - 1) / 2;
         const z = Math.floor(index / cells) - (cells - 1) / 2;
         const r2 = x * x + z * z;
-        const heat = Math.max(
-          0.04,
-          sourceStrength * Math.exp(-r2 / (6 + diffusivity * 30 + time * 4)),
-        );
+        const spread = 2.5 + diffusivity * 20 + time * 5;
+        const heat = Math.max(0.04, sourceStrength * (2.5 / spread) * Math.exp(-r2 / spread));
         return { x, z, heat };
       }),
     [diffusivity, sourceStrength, time],
@@ -759,7 +792,7 @@ function IdealGasScene({
   temperature: number;
 }) {
   const time = useAnimationTime(0.9);
-  const count = Math.min(100, Math.round(particleCount));
+  const count = Math.round(particleCount);
   const particles = useMemo(
     () =>
       Array.from({ length: count }, (_, index) => {
@@ -825,19 +858,19 @@ function IdealGasLab({ definition }: LabRouteProps) {
 
 function BoltzmannDistributionScene({
   temperature,
-  proposal,
+  densityPower,
 }: {
   temperature: number;
-  proposal: number;
+  densityPower: number;
 }) {
   const bars = useMemo(
     () =>
       Array.from({ length: 28 }, (_, index) => {
         const energy = 0.15 + index * 0.22;
-        const value = Math.sqrt(energy) * Math.exp(-energy / temperature) * (0.8 + proposal * 0.1);
+        const value = energy ** densityPower * Math.exp(-energy / temperature);
         return { energy, value };
       }),
-    [proposal, temperature],
+    [densityPower, temperature],
   );
   const max = Math.max(...bars.map((bar) => bar.value), 1e-6);
 
@@ -858,7 +891,7 @@ function BoltzmannDistributionScene({
 
 function BoltzmannDistributionLab({ definition }: LabRouteProps) {
   const [temperature, setTemperature] = useState(1.2);
-  const [proposal, setProposal] = useState(0.8);
+  const [densityPower, setDensityPower] = useState(0.5);
 
   return (
     <LabSimulationLayout
@@ -874,17 +907,17 @@ function BoltzmannDistributionLab({ definition }: LabRouteProps) {
             onChange={setTemperature}
           />
           <NumberSlider
-            label="Proposal size"
-            value={proposal}
-            min={0.2}
-            max={1.8}
+            label="Density-of-states power"
+            value={densityPower}
+            min={0}
+            max={1.5}
             step={0.1}
-            onChange={setProposal}
+            onChange={setDensityPower}
           />
         </>
       }
     >
-      <BoltzmannDistributionScene temperature={temperature} proposal={proposal} />
+      <BoltzmannDistributionScene temperature={temperature} densityPower={densityPower} />
     </LabSimulationLayout>
   );
 }
@@ -968,8 +1001,8 @@ function QuantumTunnelingScene({
   packetEnergy: number;
   resetKey: number;
 }) {
-  const time = useAnimationTime(0.55 + packetEnergy * 0.15);
-  const phase = (time + resetKey * 0.01) % 8;
+  const time = useAnimationTime(0.55 + packetEnergy * 0.15, resetKey);
+  const phase = time % 8;
   const center = -3.5 + phase;
   const points = useMemo(
     () =>
@@ -1051,12 +1084,20 @@ function Schrodinger2DScene({ spread, potential }: { spread: number; potential: 
       Array.from({ length: cells * cells }, (_, index) => {
         const x = ((index % cells) - (cells - 1) / 2) * 0.42;
         const z = (Math.floor(index / cells) - (cells - 1) / 2) * 0.42;
-        const density =
+        const freeDensity =
           Math.exp(-(((x - centerX) ** 2 + z * z) / (spread * 18))) *
           (0.6 + 0.4 * Math.sin(time + x * 2));
+        const potentialProfile = Math.exp(-(((x - 2.4) ** 2 + z * z) / 0.75));
+        const scattering = Math.max(
+          0.2,
+          1 -
+            potential * 0.3 * potentialProfile +
+            potential * 0.12 * potentialProfile * Math.sin(time * 2 + z * 5),
+        );
+        const density = freeDensity * scattering;
         return { x, z, density: Math.max(0.03, density) };
       }),
-    [centerX, spread, time],
+    [centerX, potential, spread, time],
   );
 
   return (

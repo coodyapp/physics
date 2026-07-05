@@ -1,10 +1,27 @@
 import { Children, memo } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 import { CoodyLogo } from "@/components/coody-logo";
-import { GlitchText } from "@/components/glitch-text";
-import { WebGLBackground } from "@/components/webgl-background";
+import { WaveText } from "@/components/wave-text";
+import { LAB_SIMULATIONS, getLabSimulationPath } from "@/simulations/physics-labs";
 import { cn } from "@/utils/tailwind";
+
+const ROUTED_SIMULATIONS = [
+  { title: "Mass Effect", href: "/simulations/mass-effect" },
+  { title: "Gravitational Waves", href: "/simulations/gravitational-waves" },
+  { title: "Mercury Precession", href: "/simulations/mercury-precession" },
+];
+
+const AVAILABLE_SIMULATIONS = [
+  ...ROUTED_SIMULATIONS,
+  ...LAB_SIMULATIONS.map((simulation) => ({
+    title: simulation.title,
+    href: getLabSimulationPath(simulation),
+  })),
+];
+const SIMULATION_NAMES = AVAILABLE_SIMULATIONS.map((simulation) => simulation.title);
+const SIMULATIONS_HREF = AVAILABLE_SIMULATIONS[0]?.href ?? "/simulations/mass-effect";
 
 const PHYSICIST_NAMES = [
   "Isaac Newton",
@@ -51,8 +68,6 @@ const PHYSICIST_NAMES = [
   "Andrea Ghez",
 ] as const;
 
-const GLITCH_NAMES = ["Newton", "Maxwell", "Curie", "Einstein", "Noether", "Feynman"];
-
 type WaveDirection = "ltr" | "rtl";
 
 export type LogosCarouselProps = {
@@ -64,18 +79,24 @@ export type LogosCarouselProps = {
 function Home() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
-      <WebGLBackground />
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.18),transparent_24%),linear-gradient(180deg,rgba(0,0,0,0.2),rgba(0,0,0,0.94)_82%)]" />
 
       <main className="relative z-10 flex min-h-[calc(100svh-88px)] flex-col items-center justify-center px-4 py-16 text-center sm:px-6">
         <section className="home-appear home-appear-first mx-auto max-w-5xl">
           <p className="text-xs font-medium uppercase tracking-[0.42em] text-white/50">Physics</p>
-          <h1 className="mt-5 text-6xl font-semibold tracking-[-0.08em] text-white sm:text-8xl lg:text-9xl">
-            <GlitchText words={GLITCH_NAMES} glitchInterval={2200} />
+          <h1 className="mx-auto mt-5 w-[min(94vw,70rem)]">
+            <WaveText names={SIMULATION_NAMES} />
           </h1>
         </section>
 
-        <LogosCarousel className="home-appear home-appear-second mt-12 w-full max-w-6xl">
+        <Link
+          to={SIMULATIONS_HREF}
+          className="home-appear home-appear-second mt-10 inline-flex rounded-full bg-white px-6 py-3 text-sm font-medium uppercase tracking-[0.18em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-white/90"
+        >
+          Go to simulations
+        </Link>
+
+        <LogosCarousel className="home-appear home-appear-third mt-12 w-full max-w-6xl">
           {PHYSICIST_NAMES.map((name) => (
             <span key={name}>{name}</span>
           ))}

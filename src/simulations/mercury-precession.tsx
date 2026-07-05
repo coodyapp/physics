@@ -73,6 +73,72 @@ export function calculateOrbitalVelocity(
   return Math.sqrt(SIM_G * M * (2 / radius - 1 / semiMajorAxis));
 }
 
+function calculateOrbitAcceleration(
+  position: Vector3,
+  velocity: Vector3,
+  centralMassKg: number,
+  showRelativity: boolean,
+): Vector3 {
+  const r = position.length();
+  if (r < 1e-9) return new Vector3();
+
+  const M = simMass(centralMassKg);
+  const rUnit = position.clone().normalize();
+  const acceleration = rUnit.clone().multiplyScalar(-(SIM_G * M) / (r * r));
+
+  // Schwarzschild weak-field correction that produces prograde perihelion precession.
+  if (showRelativity) {
+    const angularMomentum = position.clone().cross(velocity);
+    const L = angularMomentum.length();
+
+    if (L > 1e-10) {
+      acceleration.add(
+        rUnit.clone().multiplyScalar((-3 * SIM_G * M * L * L) / (SIM_C * SIM_C * r ** 4)),
+      );
+    }
+  }
+
+  return acceleration;
+}
+
+export interface OrbitState {
+  position: Vector3;
+  velocity: Vector3;
+}
+
+export function advanceOrbitState(
+  state: OrbitState,
+  centralMassKg: number,
+  showRelativity: boolean,
+  dt: number,
+): OrbitState {
+  const acceleration = calculateOrbitAcceleration(
+    state.position,
+    state.velocity,
+    centralMassKg,
+    showRelativity,
+  );
+  const position = state.position
+    .clone()
+    .add(state.velocity.clone().multiplyScalar(dt))
+    .add(acceleration.clone().multiplyScalar(0.5 * dt * dt));
+  const predictedVelocity = state.velocity.clone().add(acceleration.clone().multiplyScalar(dt));
+  const nextAcceleration = calculateOrbitAcceleration(
+    position,
+    predictedVelocity,
+    centralMassKg,
+    showRelativity,
+  );
+  const velocity = state.velocity.clone().add(
+    acceleration
+      .clone()
+      .add(nextAcceleration)
+      .multiplyScalar(0.5 * dt),
+  );
+
+  return { position, velocity };
+}
+
 interface OrbitingBody {
   id: number;
   position: Vector3;
@@ -92,6 +158,7 @@ function MercuryPrecessionScene({
   eccentricity,
   speedMultiplier,
   showRelativity,
+  resetKey,
   onBodyClick,
 }: {
   starMass: number;
@@ -99,6 +166,7 @@ function MercuryPrecessionScene({
   eccentricity: number;
   speedMultiplier: number;
   showRelativity: boolean;
+  resetKey: number;
   onBodyClick: () => void;
 }) {
   const starRef = useRef<Mesh>(null);
@@ -125,7 +193,7 @@ function MercuryPrecessionScene({
     };
 
     setBodies([initialBody]);
-  }, [starMass, planetMass, eccentricity]);
+  }, [starMass, planetMass, eccentricity, resetKey]);
 
   // Handle mouse clicks to add random bodies
   useEffect(() => {
@@ -186,42 +254,18 @@ function MercuryPrecessionScene({
   // Physics integration (velocity Verlet) in simulation units.
   useFrame((_, delta) => {
     const dt = Math.min(delta * speedMultiplier * 0.4, 0.5); // Cap dt to keep the integrator stable
-    const M = simMass(starMass);
 
     setBodies((prevBodies) =>
       prevBodies.map((body) => {
         const r = body.position.length();
         if (r < 0.5) return body; // Prevent collision with star
 
-        // Newtonian gravity acceleration: a = -GM/r² r̂
-        const rUnit = body.position.clone().normalize();
-        const gravityMag = (SIM_G * M) / (r * r);
-        let acceleration = rUnit.clone().multiplyScalar(-gravityMag);
-
-        // General Relativity correction (Schwarzschild weak-field).
-        // The relativistic term in the orbit equation adds a radial acceleration
-        //   a_GR = -3 G M L² / (c² r⁴) r̂
-        // where L = |r × v| is the specific angular momentum. This produces the
-        // perihelion precession Δω = 6πGM / (c²a(1-e²)) per orbit.
-        if (showRelativity) {
-          const angularMomentum = body.position.clone().cross(body.velocity);
-          const L = angularMomentum.length();
-
-          if (L > 1e-10) {
-            const grFactor = (3 * SIM_G * M * L * L) / (SIM_C * SIM_C * r ** 4);
-            const grAccel = rUnit.clone().multiplyScalar(-grFactor);
-
-            acceleration.add(grAccel);
-          }
-        }
-
-        // Velocity Verlet integration
-        const halfDtAccel = acceleration.clone().multiplyScalar(dt * 0.5);
-        const newVelocity = body.velocity.clone().add(halfDtAccel);
-        const newPosition = body.position
-          .clone()
-          .add(body.velocity.clone().multiplyScalar(dt))
-          .add(halfDtAccel.clone().multiplyScalar(dt));
+        const { position: newPosition, velocity: newVelocity } = advanceOrbitState(
+          body,
+          starMass,
+          showRelativity,
+          dt,
+        );
 
         // Update trail
         const newTrail: [number, number, number][] = [
@@ -305,6 +349,7 @@ function MercuryPrecessionSimulation() {
   const [speedMultiplier, setSpeedMultiplier] = useState(50);
   const [showRelativity, setShowRelativity] = useState(true);
   const [bodyCount, setBodyCount] = useState(1);
+  const [resetKey, setResetKey] = useState(0);
 
   const handleBodyClick = () => {
     setBodyCount((prev) => prev + 1);
@@ -316,6 +361,8 @@ function MercuryPrecessionSimulation() {
     setPlanetMass(3.3e23);
     setEccentricity(0.206);
     setSpeedMultiplier(50);
+    setShowRelativity(true);
+    setResetKey((value) => value + 1);
   };
 
   const renderControls = () => (
@@ -446,6 +493,9 @@ function MercuryPrecessionSimulation() {
       controls={renderControls()}
       information={renderInfo()}
       cameraPosition={[0, 0, 30]}
+      cameraZoom={28}
+      defaultCameraMode="2d"
+      defaultCameraDirection="xy"
     >
       <MercuryPrecessionScene
         starMass={starMass}
@@ -453,6 +503,7 @@ function MercuryPrecessionSimulation() {
         eccentricity={eccentricity}
         speedMultiplier={speedMultiplier}
         showRelativity={showRelativity}
+        resetKey={resetKey}
         onBodyClick={handleBodyClick}
       />
     </FloatingSimulationLayout>

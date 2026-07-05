@@ -6,23 +6,24 @@ import WaveVisualization from "./wave-visualization";
 import BinarySystem from "./binary-system";
 
 function GravitationalWavesSimulation() {
-  const [frequency, setFrequency] = useState(1);
+  const [orbitalFrequency, setOrbitalFrequency] = useState(1);
   const [amplitude, setAmplitude] = useState(1);
   const [mass1, setMass1] = useState(1.4 * PHYSICS_CONSTANTS.M_sun);
   const [mass2, setMass2] = useState(1.4 * PHYSICS_CONSTANTS.M_sun);
 
   const mass1Solar = mass1 / PHYSICS_CONSTANTS.M_sun;
   const mass2Solar = mass2 / PHYSICS_CONSTANTS.M_sun;
+  const gravitationalWaveFrequency = orbitalFrequency * 2;
 
   const controls = (
     <>
       <NumberSlider
-        label="Frequency"
-        value={frequency}
+        label="Orbital Frequency"
+        value={orbitalFrequency}
         min={0.1}
         max={10}
         step={0.1}
-        onChange={setFrequency}
+        onChange={setOrbitalFrequency}
         formatValue={(value) => `${value.toFixed(1)} Hz`}
       />
 
@@ -67,6 +68,10 @@ function GravitationalWavesSimulation() {
           Gravitational waves are ripples in the fabric of spacetime caused by accelerating masses.
         </p>
         <div>
+          <strong>GW Frequency:</strong>
+          <p className="text-muted-foreground">{gravitationalWaveFrequency.toFixed(2)} Hz</p>
+        </div>
+        <div>
           <strong>Total Mass:</strong>
           <p className="text-muted-foreground">{(mass1Solar + mass2Solar).toFixed(2)} M☉</p>
         </div>
@@ -81,8 +86,8 @@ function GravitationalWavesSimulation() {
       controls={controls}
       information={information}
     >
-      <BinarySystem mass1={mass1} mass2={mass2} frequency={frequency} />
-      <WaveVisualization frequency={frequency} amplitude={amplitude} />
+      <BinarySystem mass1={mass1} mass2={mass2} frequency={orbitalFrequency} />
+      <WaveVisualization frequency={gravitationalWaveFrequency} amplitude={amplitude} />
     </FloatingSimulationLayout>
   );
 }

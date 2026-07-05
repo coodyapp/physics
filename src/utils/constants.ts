@@ -30,17 +30,84 @@ export const VISUALIZATION_DEFAULTS = {
 } as const;
 
 export const HERO_CONTENT = {
-  badge: "In honor of Albert Einstein",
+  badge: "Interactive physics across scales",
   title: {
-    main: "Explore the",
-    highlight: "fabric of Spacetime",
+    main: "Explore physics",
+    highlight: "from forces to spacetime",
   },
-  description: "An interactive visualization of Einstein's equations through Three.js",
+  description:
+    "Three.js simulations that turn motion, fields, waves, quanta, heat, and relativity into explorable visual models.",
   cta: {
     text: "Explore Simulations",
     link: "/simulations/mass-effect",
   },
 } as const;
+
+export const PHYSICIST_TRIBUTE = {
+  title: "A tribute to the architects of modern physics",
+  description:
+    "Inspired by Newton, Maxwell, Curie, Bohr, Schrödinger, Feynman, and Einstein, whose models of motion, fields, matter, quanta, and spacetime shape the phenomena simulated here.",
+  names: [
+    "Isaac Newton",
+    "James Clerk Maxwell",
+    "Marie Curie",
+    "Niels Bohr",
+    "Erwin Schrödinger",
+    "Richard Feynman",
+    "Albert Einstein",
+  ],
+} as const;
+
+export const PHYSICS_CATEGORIES = [
+  {
+    name: "Mechanics",
+    summary: "Forces, orbital motion, stability, and conservation laws.",
+    status: "Live foundation",
+    href: "/simulations/mercury-precession",
+  },
+  {
+    name: "Electromagnetism",
+    summary: "Fields, waves, charge dynamics, and radiation.",
+    status: "Planned",
+  },
+  {
+    name: "Thermodynamics",
+    summary: "Heat flow, entropy, diffusion, and statistical behavior.",
+    status: "Planned",
+  },
+  {
+    name: "Relativity",
+    summary: "Curved spacetime, gravitational waves, and precession.",
+    status: "Live simulations",
+    href: "/simulations/mass-effect",
+  },
+  {
+    name: "Quantum",
+    summary: "Wavefunctions, spectra, uncertainty, and tunneling.",
+    status: "Planned",
+  },
+] as const;
+
+export const FEATURED_SIMULATIONS = [
+  {
+    title: "Mass and Curvature",
+    category: "Relativity",
+    description: "Visualize how mass deforms a spacetime grid.",
+    href: "/simulations/mass-effect",
+  },
+  {
+    title: "Gravitational Waves",
+    category: "Relativity",
+    description: "Explore binary-source wave distortion.",
+    href: "/simulations/gravitational-waves",
+  },
+  {
+    title: "Mercury Precession",
+    category: "Mechanics + Relativity",
+    description: "Compare orbital motion with relativistic correction.",
+    href: "/simulations/mercury-precession",
+  },
+] as const;
 
 export const EINSTEIN_QUOTES: string[] = [
   "Imagination is more important than knowledge. For knowledge is limited, whereas imagination embraces the entire world.",
