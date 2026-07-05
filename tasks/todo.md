@@ -83,7 +83,7 @@
 - [x] Replace all lab canvas visualizations with React Three Fiber 3D scenes and move every parameter into the shared right-side controls panel.
 - [x] Migrate Mercury Precession from `BaseSimulation` to `FloatingSimulationLayout`.
 - [x] Delete the now-unused `BaseSimulation` shell.
-- [ ] Run local validation, commit intended changes only, push, and verify CD deployment.
+- [x] Run local validation, commit intended changes only, push, and verify CD deployment.
 
 ## 2026-07-04 Single Control and 3D Simulation Results
 
@@ -91,3 +91,4 @@
 - Lab simulations were converted from 2D canvas overlays to React Three Fiber 3D scenes with shared right-side parameter controls.
 - Mercury Precession no longer uses the old side-tab `BaseSimulation`; that shell was removed.
 - Local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.
+- Deployed commit `c67f62b` through CD run `28726235727`; Cloudflare Pages deployment passed.
