@@ -57,7 +57,7 @@
 - [x] Fix detected physics bugs: Schwarzschild metric angular term, binary barycenter/frequency phase, solar-mass display units, and Boltzmann acceptance bias.
 - [x] Add regression tests for the fixed physics helpers.
 - [x] Run `vp check`, `vp test`, `vp build`, and `yarn build`.
-- [ ] Commit intended changes only, push to `main`, and verify CD deployment.
+- [x] Commit intended changes only, push to `main`, and verify CD deployment.
 
 ## 2026-07-04 Production Refactor Analysis
 
@@ -74,3 +74,4 @@
 - Fixed solar-mass scaling in Mass Effect and Gravitational Waves, binary barycenter placement for unequal masses, gravitational wave Hz phase conversion, Schwarzschild metric angular terms, and Boltzmann Metropolis acceptance.
 - Removed high-confidence dead code: stale n-body route comments, unused `mesh.tsx`, and unused simulation interface types.
 - Added regression coverage; local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.
+- Deployed refactor commit `984e0d4` through CD run `28724069146`; Cloudflare Pages deployment passed.
