@@ -15,6 +15,12 @@ import {
   calculateStrainTensor,
   type WaveSource,
 } from "@/physics/gravitational";
+import {
+  calculateAngularPhase,
+  calculateBarycentricPositions,
+  calculateBarycentricRadii,
+} from "@/physics/binary-orbit";
+import { calculateBoltzmannAcceptance } from "@/physics/boltzmann";
 import { GravitationalWavesService } from "@/physics/gravitational-waves.service";
 import { PhysicsService } from "@/physics/physics.service";
 import { SpacetimeService, GravitationalWaveService } from "@/physics/spacetime";
@@ -78,11 +84,28 @@ describe("gravity — Newtonian gravity", () => {
 describe("gravity — visualization helpers", () => {
   it("calculateBinarySystem is symmetric under mass swap and negative at the centre well", () => {
     const phase = 0;
-    const v = calculateBinarySystem(0, 0, 3, 3, 5, phase);
-    const vSwap = calculateBinarySystem(0, 0, 3, 3, 5, phase);
-    expect(v).toBe(vSwap);
+    const v = calculateBinarySystem(1, 0, 2, 5, 5, phase);
+    const vSwap = calculateBinarySystem(-1, 0, 5, 2, 5, phase);
+    expect(v).toBeCloseTo(vSwap, 10);
     // Potential is negative (a well).
     expect(v).toBeLessThan(0);
+  });
+
+  it("calculates barycentric radii and positions for unequal masses", () => {
+    const mass1 = 2;
+    const mass2 = 6;
+    const separation = 8;
+    const radii = calculateBarycentricRadii(mass1, mass2, separation);
+    const positions = calculateBarycentricPositions(mass1, mass2, separation, 0);
+
+    expect(radii.body1).toBeCloseTo(6, 10);
+    expect(radii.body2).toBeCloseTo(2, 10);
+    expect(mass1 * positions.body1.x + mass2 * positions.body2.x).toBeCloseTo(0, 10);
+    expect(positions.body1.x - positions.body2.x).toBeCloseTo(separation, 10);
+  });
+
+  it("converts frequency in Hz to angular phase", () => {
+    expect(calculateAngularPhase(0.25, 1)).toBeCloseTo(Math.PI / 2, 10);
   });
 
   it("calculateSpacetimeCurvatureSimple falls off with distance and is negative", () => {
@@ -220,6 +243,17 @@ describe("SpacetimeService", () => {
     expect(m.elements[5]).toBeCloseTo(1 / (1 - rs / (10 * rs)), 10); // g_rr
   });
 
+  it("uses the Cartesian position to derive Schwarzschild angular terms", () => {
+    const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    const r = 10 * rs;
+    const equatorMetric = SpacetimeService.calculateMetricTensor(new Vector3(r, 0, 0), M_sun);
+    const polarAxisMetric = SpacetimeService.calculateMetricTensor(new Vector3(0, 0, r), M_sun);
+
+    expect(equatorMetric.elements[10]).toBeCloseTo(r ** 2, 6); // g_theta_theta
+    expect(equatorMetric.elements[15]).toBeCloseTo(r ** 2, 6); // g_phi_phi at theta = pi/2
+    expect(polarAxisMetric.elements[15]).toBeCloseTo(0, 10); // g_phi_phi at theta = 0
+  });
+
   it("time dilation -> 0 at the horizon and -> 1 far away", () => {
     const rs = SpacetimeService.schwarzschildRadius(M_sun);
     expect(SpacetimeService.calculateTimeDilation(rs * 1.1, M_sun)).toBeCloseTo(
@@ -247,5 +281,30 @@ describe("SpacetimeService", () => {
     const a = GravitationalWaveService.calculateWaveDistortion(1, 0, 0, 1, 1);
     const b = GravitationalWaveService.calculateWaveDistortion(1, 0, Math.PI / 2, 1, 1);
     expect(a).not.toBeCloseTo(b, 6);
+  });
+
+  it("interprets gravitational wave frequency as cycles per second", () => {
+    const initial = GravitationalWaveService.calculateWaveDistortion(0, 0, 0, 1, 2);
+    const quarterCycle = GravitationalWaveService.calculateWaveDistortion(0, 0, 1 / 8, 1, 2);
+
+    expect(initial).toBeCloseTo(1, 10);
+    expect(quarterCycle).toBeCloseTo(0, 10);
+  });
+});
+
+describe("Boltzmann sampling helpers", () => {
+  it("calculates bounded Metropolis acceptance with density-of-states weighting", () => {
+    const lowerEnergyWithLowerDensity = calculateBoltzmannAcceptance(0.1, 0.001, 100);
+    const highTemperatureUphill = calculateBoltzmannAcceptance(1, 2, 5);
+    const lowTemperatureUphill = calculateBoltzmannAcceptance(1, 2, 0.5);
+
+    expect(lowerEnergyWithLowerDensity).toBeGreaterThan(0);
+    expect(lowerEnergyWithLowerDensity).toBeLessThan(1);
+    expect(highTemperatureUphill).toBeGreaterThan(lowTemperatureUphill);
+    expect(highTemperatureUphill).toBeLessThanOrEqual(1);
+  });
+
+  it("rejects non-positive temperatures", () => {
+    expect(() => calculateBoltzmannAcceptance(1, 1, 0)).toThrow();
   });
 });

@@ -19,6 +19,8 @@ export class SpacetimeService {
     }
 
     const factor = 1 - rs / r;
+    const cosTheta = Math.max(-1, Math.min(1, position.z / r));
+    const sinThetaSquared = Math.max(0, 1 - cosTheta * cosTheta);
 
     // Three.js Matrix4 uses column-major order
     const matrix = new Matrix4();
@@ -38,7 +40,7 @@ export class SpacetimeService {
       0,
       0,
       0,
-      r ** 2 * Math.sin(position.y) ** 2,
+      r ** 2 * sinThetaSquared,
     );
     return matrix;
   }
@@ -67,13 +69,13 @@ export class SpacetimeService {
   }
 
   /**
-   * Calculate spacetime curvature using Ricci scalar
+   * Calculate a curvature proxy for visualization.
    */
   static calculateSpacetimeCurvature(position: Vector3, mass: number): number {
     const r = position.length();
     const rs = this.schwarzschildRadius(mass);
 
-    // Ricci scalar for Schwarzschild metric (simplified)
+    // Schwarzschild vacuum Ricci scalar is zero; this proxy preserves useful visual falloff.
     return rs / r ** 3;
   }
 
@@ -96,15 +98,14 @@ export class SpacetimeService {
   }
 
   /**
-   * Calculate Ricci scalar curvature
-   * Simplified for visualization purposes
+   * Calculate a curvature proxy for visualization purposes.
    */
   static calculateRicciScalar(x: number, y: number, mass: number): number {
     const r = Math.sqrt(x * x + y * y);
     const minRadius = 0.5;
     const effectiveRadius = Math.max(r, minRadius);
 
-    // Simplified: R ∝ M/r³ for Schwarzschild
+    // Visualization proxy: curvature ∝ M/r³.
     return mass / Math.pow(effectiveRadius, 3);
   }
 
@@ -135,11 +136,12 @@ export class GravitationalWaveService {
   ): number {
     if (amplitude === 0) return 0;
 
-    // Wave vector (propagating in x direction)
-    const k = frequency * 0.5;
+    const angularFrequency = 2 * Math.PI * frequency;
+    // Wave vector (propagating in x direction) scaled for the visualization grid.
+    const k = angularFrequency * 0.5;
 
     // Plus polarization: h_+ = A cos(ωt - kx)
-    const phase = frequency * time - k * x;
+    const phase = angularFrequency * time - k * x;
     const hPlus = amplitude * Math.cos(phase);
 
     // Cross polarization: h_x = A sin(ωt - kx)

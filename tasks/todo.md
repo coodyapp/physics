@@ -47,3 +47,30 @@
 - Added an in-page Simulation Navigator card with previous/next links and grouped active-state links.
 - Validation passed: `vp check`, `vp test`, `vp build`, and `yarn build`.
 - Deployed from commit `cc46cc3` through CD run `28722725848`; Cloudflare Pages deployment passed and `https://physics.coody.app/simulations/mechanics/projectile-motion` returned the app shell.
+
+## 2026-07-04 Production Refactor Plan
+
+- [x] Inspect dirty state, repository structure, simulation architecture, tests, and deploy workflow.
+- [x] Audit dead code, duplicated UI patterns, naming issues, and detectable physics bugs.
+- [x] Add shared simulation panel/slider/layout primitives and refactor legacy 3D simulation controls around them.
+- [x] Remove high-confidence dead code and stale commented routes.
+- [x] Fix detected physics bugs: Schwarzschild metric angular term, binary barycenter/frequency phase, solar-mass display units, and Boltzmann acceptance bias.
+- [x] Add regression tests for the fixed physics helpers.
+- [x] Run `vp check`, `vp test`, `vp build`, and `yarn build`.
+- [ ] Commit intended changes only, push to `main`, and verify CD deployment.
+
+## 2026-07-04 Production Refactor Analysis
+
+- Current local worktree has unrelated unstaged edits in `src/home.tsx`, `src/utils/constants.ts`, and `src/assets/`; those must remain untouched unless explicitly staged later.
+- Existing simulation UI has three patterns: floating controls/info panels, Mercury side tabs, and lab-specific overlay controls. The safe first step is shared primitives without changing cameras or routes.
+- High-confidence dead code: `src/components/mesh.tsx`, `src/simulations/base/simulation.interface.ts`, and commented n-body route/import references in `src/main.tsx`.
+- Several generated `src/ui/*` components are production-unreachable, but keeping them is lower risk because they function as the local design-system inventory.
+- Larger fixes deferred after this pass: Mercury per-frame React state refactor, full 3D conversion of all labs, and splitting `physics-labs.tsx` into per-simulation modules.
+
+## 2026-07-04 Production Refactor Results
+
+- Added shared `CollapsiblePanel`, `NumberSlider`, and `FloatingSimulationLayout` primitives for consistent 3D simulation controls/info UI.
+- Refactored Mass Effect and Gravitational Waves to use the shared floating simulation layout; refactored Mercury parameter sliders to use `NumberSlider`.
+- Fixed solar-mass scaling in Mass Effect and Gravitational Waves, binary barycenter placement for unequal masses, gravitational wave Hz phase conversion, Schwarzschild metric angular terms, and Boltzmann Metropolis acceptance.
+- Removed high-confidence dead code: stale n-body route comments, unused `mesh.tsx`, and unused simulation interface types.
+- Added regression coverage; local validation passed: `vp check`, `vp test` (35 tests), `vp build`, and `yarn build`.

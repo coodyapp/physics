@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { calculateBarycentricPositions } from "@/physics/binary-orbit";
 import { PHYSICS_CONSTANTS } from "@/utils/constants";
 
 export interface CelestialBody {
@@ -42,17 +43,11 @@ export function calculateBinarySystem(
   separation: number,
   phase: number,
 ): number {
-  // Position of first mass
-  const x1 = (separation / 2) * Math.cos(phase);
-  const y1 = (separation / 2) * Math.sin(phase);
-
-  // Position of second mass (opposite side)
-  const x2 = -(separation / 2) * Math.cos(phase);
-  const y2 = -(separation / 2) * Math.sin(phase);
+  const positions = calculateBarycentricPositions(mass1, mass2, separation, phase);
 
   // Distance to each mass
-  const r1 = Math.sqrt((x - x1) ** 2 + (y - y1) ** 2);
-  const r2 = Math.sqrt((x - x2) ** 2 + (y - y2) ** 2);
+  const r1 = Math.sqrt((x - positions.body1.x) ** 2 + (y - positions.body1.z) ** 2);
+  const r2 = Math.sqrt((x - positions.body2.x) ** 2 + (y - positions.body2.z) ** 2);
 
   // Combined gravitational potential
   const minRadius = 0.5;

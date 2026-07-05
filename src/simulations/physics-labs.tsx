@@ -3,6 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import { ChevronLeft, ChevronRight, ListTree, SlidersHorizontal } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
+import { calculateBoltzmannAcceptance } from "@/physics/boltzmann";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -1127,11 +1128,10 @@ function BoltzmannDistributionSimulation() {
       const index = Math.floor(Math.random() * energies.length);
       const oldEnergy = energies[index];
       const newEnergy = Math.abs(oldEnergy + (Math.random() - 0.5) * proposal);
-      const densityRatio = Math.sqrt((newEnergy + 1e-6) / (oldEnergy + 1e-6));
-      const acceptance = densityRatio * Math.exp(-(newEnergy - oldEnergy) / temperature);
+      const acceptance = calculateBoltzmannAcceptance(oldEnergy, newEnergy, temperature);
 
       // Metropolis sampler for P(E) proportional to sqrt(E) exp(-E/kT).
-      if (newEnergy < oldEnergy || Math.random() < acceptance) energies[index] = newEnergy;
+      if (Math.random() < acceptance) energies[index] = newEnergy;
     }
 
     const bins = Array.from({ length: 32 }, () => 0);

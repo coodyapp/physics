@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { NumberSlider } from "@/components/number-slider";
 import { BaseSimulation } from "./base/base-simulation";
-import { Slider } from "@/ui/slider";
 import { Label } from "@/ui/label";
 import { Button } from "@/ui/button";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -299,7 +299,7 @@ function MercuryPrecessionScene({
 }
 
 function MercuryPrecessionSimulation() {
-  const [starMass, setStarMass] = useState(1.989e30); // Solar mass
+  const [starMass, setStarMass] = useState<number>(PHYSICS_CONSTANTS.M_sun);
   const [planetMass, setPlanetMass] = useState(3.3e23); // Mercury mass
   const [eccentricity, setEccentricity] = useState(0.206); // Mercury eccentricity
   const [speedMultiplier, setSpeedMultiplier] = useState(50);
@@ -312,7 +312,7 @@ function MercuryPrecessionSimulation() {
 
   const handleReset = () => {
     setBodyCount(1);
-    setStarMass(1.989e30);
+    setStarMass(PHYSICS_CONSTANTS.M_sun);
     setPlanetMass(3.3e23);
     setEccentricity(0.206);
     setSpeedMultiplier(50);
@@ -320,55 +320,45 @@ function MercuryPrecessionSimulation() {
 
   const renderControls = () => (
     <div className="space-y-4">
-      <div>
-        <Label>Star Mass (M☉)</Label>
-        <Slider
-          value={[starMass / 1.989e30]}
-          onValueChange={([v]) => setStarMass(v * 1.989e30)}
-          min={0.5}
-          max={5}
-          step={0.1}
-        />
-        <span className="text-sm text-muted-foreground">{(starMass / 1.989e30).toFixed(1)} M☉</span>
-      </div>
+      <NumberSlider
+        label="Star Mass"
+        value={starMass / PHYSICS_CONSTANTS.M_sun}
+        min={0.5}
+        max={5}
+        step={0.1}
+        onChange={(value) => setStarMass(value * PHYSICS_CONSTANTS.M_sun)}
+        formatValue={(value) => `${value.toFixed(1)} M☉`}
+      />
 
-      <div>
-        <Label>Planet Mass (M⊕)</Label>
-        <Slider
-          value={[planetMass / 5.972e24]}
-          onValueChange={([v]) => setPlanetMass(v * 5.972e24)}
-          min={0.01}
-          max={10}
-          step={0.01}
-        />
-        <span className="text-sm text-muted-foreground">
-          {(planetMass / 5.972e24).toFixed(2)} M⊕
-        </span>
-      </div>
+      <NumberSlider
+        label="Planet Mass"
+        value={planetMass / 5.972e24}
+        min={0.01}
+        max={10}
+        step={0.01}
+        onChange={(value) => setPlanetMass(value * 5.972e24)}
+        formatValue={(value) => `${value.toFixed(2)} M⊕`}
+      />
 
-      <div>
-        <Label>Eccentricity (e)</Label>
-        <Slider
-          value={[eccentricity]}
-          onValueChange={([v]) => setEccentricity(v)}
-          min={0}
-          max={0.9}
-          step={0.01}
-        />
-        <span className="text-sm text-muted-foreground">{eccentricity.toFixed(3)}</span>
-      </div>
+      <NumberSlider
+        label="Eccentricity"
+        value={eccentricity}
+        min={0}
+        max={0.9}
+        step={0.01}
+        onChange={setEccentricity}
+        formatValue={(value) => value.toFixed(3)}
+      />
 
-      <div>
-        <Label>Animation Speed</Label>
-        <Slider
-          value={[speedMultiplier]}
-          onValueChange={([v]) => setSpeedMultiplier(v)}
-          min={1}
-          max={200}
-          step={1}
-        />
-        <span className="text-sm text-muted-foreground">{speedMultiplier}×</span>
-      </div>
+      <NumberSlider
+        label="Animation Speed"
+        value={speedMultiplier}
+        min={1}
+        max={200}
+        step={1}
+        onChange={setSpeedMultiplier}
+        formatValue={(value) => `${value.toFixed(0)}×`}
+      />
 
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
         <Label>General Relativity</Label>

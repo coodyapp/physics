@@ -9,7 +9,6 @@ import { MassEffectSimulation } from "@/simulations/mass-effect";
 import { GravitationalWavesSimulation } from "@/simulations/gravitational-waves";
 import { MercuryPrecessionSimulation } from "@/simulations/mercury-precession";
 import { PhysicsLabRoute } from "@/simulations/physics-labs";
-//import { NBodyGravitySimulation } from '@/simulations/n-body-gravity'
 import Layout from "@/components/layout";
 import "./styles/globals.css";
 
@@ -30,7 +29,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               element={<MercuryPrecessionSimulation />}
             />
             <Route path="simulations/:category/:slug" element={<PhysicsLabRoute />} />
-            {/* <Route path="simulations/n-body-gravity" element={<NBodyGravitySimulation />} /> */}
           </Route>
         </Routes>
         <Toaster />

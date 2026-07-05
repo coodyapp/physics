@@ -1,7 +1,9 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { calculateAngularPhase, calculateBarycentricPositions } from "@/physics/binary-orbit";
 import { calculateBinarySystem } from "@/physics/gravity";
+import { PHYSICS_CONSTANTS } from "@/utils/constants";
 
 interface BinarySystemProps {
   mass1: number;
@@ -29,14 +31,16 @@ export default function BinarySystem({ mass1, mass2, frequency }: BinarySystemPr
 
     const positions = meshRef.current.geometry.attributes.position;
     const separation = 5;
-    const phase = timeRef.current * frequency;
+    const phase = calculateAngularPhase(timeRef.current, frequency);
+    const mass1Solar = mass1 / PHYSICS_CONSTANTS.M_sun;
+    const mass2Solar = mass2 / PHYSICS_CONSTANTS.M_sun;
 
     // Update grid positions based on binary system
     for (let i = 0; i < positions.count; i++) {
       const x = positions.getX(i);
       const y = positions.getY(i);
 
-      const z = calculateBinarySystem(x, y, mass1 / 1e30, mass2 / 1e30, separation, phase);
+      const z = calculateBinarySystem(x, y, mass1Solar, mass2Solar, separation, phase);
       positions.setZ(i, z * 2); // Scale for visibility
     }
 
@@ -45,11 +49,17 @@ export default function BinarySystem({ mass1, mass2, frequency }: BinarySystemPr
 
     // Animate the binary system bodies
     if (body1Ref.current && body2Ref.current) {
-      body1Ref.current.position.x = (separation / 2) * Math.cos(phase);
-      body1Ref.current.position.z = (separation / 2) * Math.sin(phase);
+      const barycentricPositions = calculateBarycentricPositions(
+        mass1Solar,
+        mass2Solar,
+        separation,
+        phase,
+      );
 
-      body2Ref.current.position.x = -(separation / 2) * Math.cos(phase);
-      body2Ref.current.position.z = -(separation / 2) * Math.sin(phase);
+      body1Ref.current.position.x = barycentricPositions.body1.x;
+      body1Ref.current.position.z = barycentricPositions.body1.z;
+      body2Ref.current.position.x = barycentricPositions.body2.x;
+      body2Ref.current.position.z = barycentricPositions.body2.z;
     }
   });
 

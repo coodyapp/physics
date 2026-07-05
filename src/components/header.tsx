@@ -9,7 +9,7 @@ import {
   LAB_SIMULATIONS,
 } from "@/simulations/physics-labs";
 
-const LEGACY_SIMULATIONS = [
+const STANDALONE_SIMULATIONS = [
   { title: "Mass Effect", href: "/simulations/mass-effect" },
   { title: "Gravitational Waves", href: "/simulations/gravitational-waves" },
   { title: "Mercury Precession", href: "/simulations/mercury-precession" },
@@ -20,7 +20,7 @@ export default function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const knownPaths = new Set([
-    ...LEGACY_SIMULATIONS.map((simulation) => simulation.href),
+    ...STANDALONE_SIMULATIONS.map((simulation) => simulation.href),
     ...LAB_SIMULATIONS.map((simulation) => getLabSimulationPath(simulation)),
   ]);
 
@@ -46,7 +46,7 @@ export default function Header() {
             Simulations
           </option>
           <optgroup label="Relativity">
-            {LEGACY_SIMULATIONS.map((simulation) => (
+            {STANDALONE_SIMULATIONS.map((simulation) => (
               <option key={simulation.href} value={simulation.href}>
                 {simulation.title}
               </option>
