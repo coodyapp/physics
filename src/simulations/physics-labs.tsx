@@ -2,47 +2,34 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { ChevronLeft, ChevronRight, ListTree } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import * as THREE from "three";
 
 import { FloatingSimulationLayout } from "@/components/floating-simulation-layout";
 import { NumberSlider } from "@/components/number-slider";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import {
+  LAB_CATEGORY_LABELS,
+  LAB_SIMULATIONS as LAB_SIMULATION_METADATA,
+  getLabSimulationPath,
+  type LabSimulationMetadata,
+} from "@/simulations/physics-labs-data";
 
-export type LabCategory = "mechanics" | "electromagnetism" | "thermodynamics" | "quantum-mechanics";
+export {
+  LAB_CATEGORY_LABELS,
+  LAB_CATEGORY_ORDER,
+  getLabSimulationPath,
+} from "@/simulations/physics-labs-data";
+export type { LabCategory, LabSimulationMetadata } from "@/simulations/physics-labs-data";
 
 interface LabRouteProps {
   definition: LabDefinition;
 }
 
-export interface LabDefinition {
-  category: LabCategory;
-  slug: string;
-  title: string;
-  summary: string;
-  principle: string;
-  equations: string[];
-  method: string;
-  expectedOutput: string;
+export interface LabDefinition extends LabSimulationMetadata {
   component: ComponentType<LabRouteProps>;
 }
-
-export const LAB_CATEGORY_LABELS: Record<LabCategory, string> = {
-  mechanics: "Mechanics",
-  electromagnetism: "Electromagnetism",
-  thermodynamics: "Thermodynamics",
-  "quantum-mechanics": "Quantum Mechanics",
-};
-
-export const LAB_CATEGORY_ORDER: LabCategory[] = [
-  "mechanics",
-  "electromagnetism",
-  "thermodynamics",
-  "quantum-mechanics",
-];
 
 function useAnimationTime(speed = 1, resetKey = 0) {
   const [time, setTime] = useState(0);
@@ -60,6 +47,93 @@ function useAnimationTime(speed = 1, resetKey = 0) {
 
 function hslColor(hue: number, saturation = 85, lightness = 55) {
   return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function clamp(value: number, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = clamp((value - edge0) / (edge1 - edge0));
+
+  return t * t * (3 - 2 * t);
+}
+
+function gradientColor(value: number, stops: string[]) {
+  const scaled = clamp(value) * (stops.length - 1);
+  const index = Math.min(stops.length - 2, Math.floor(scaled));
+  const localT = scaled - index;
+
+  return new THREE.Color(stops[index]).lerp(new THREE.Color(stops[index + 1]), localT);
+}
+
+function createSurfaceGeometry({
+  resolution,
+  size,
+  sample,
+}: {
+  resolution: number;
+  size: number;
+  sample: (x: number, z: number) => { height: number; color: THREE.Color };
+}) {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const step = size / (resolution - 1);
+  const half = size / 2;
+
+  for (let row = 0; row < resolution; row++) {
+    const z = -half + row * step;
+
+    for (let column = 0; column < resolution; column++) {
+      const x = -half + column * step;
+      const { height, color } = sample(x, z);
+
+      positions.push(x, height, z);
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+
+  for (let row = 0; row < resolution - 1; row++) {
+    for (let column = 0; column < resolution - 1; column++) {
+      const a = row * resolution + column;
+      const b = a + 1;
+      const c = a + resolution;
+      const d = c + 1;
+
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setIndex(indices);
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
+
+function circlePoints({
+  center,
+  radius,
+  y = 0.04,
+  segments = 96,
+}: {
+  center: [number, number];
+  radius: number;
+  y?: number;
+  segments?: number;
+}) {
+  return Array.from({ length: segments + 1 }, (_, index) => {
+    const angle = (index / segments) * Math.PI * 2;
+
+    return [center[0] + Math.cos(angle) * radius, y, center[1] + Math.sin(angle) * radius] as [
+      number,
+      number,
+      number,
+    ];
+  });
 }
 
 function LabSimulationLayout({
@@ -96,8 +170,6 @@ function LabInformation({ definition }: { definition: LabDefinition }) {
         </div>
         <p className="mt-2 text-foreground">{definition.summary}</p>
       </div>
-
-      <SimulationNavigator currentSimulation={definition} />
 
       <div className="space-y-3">
         <div>
@@ -560,7 +632,7 @@ function ChargedParticleScene({
   const time = useAnimationTime(0.8);
   const radius = Math.max(0.35, (speed * 1.3) / magneticField);
   const cyclotronFrequency = magneticField * 2.4;
-  const electricDrift = electricField / (magneticField * magneticField);
+  const electricDrift = electricField / magneticField;
   const trail = useMemo(() => {
     return Array.from({ length: 160 }, (_, index) => {
       const t = time - (159 - index) * 0.035;
@@ -725,35 +797,97 @@ function HeatDiffusionScene({
   sourceStrength: number;
 }) {
   const time = useAnimationTime(0.25);
-  const cells = 15;
-  const items = useMemo(
+  const fieldSize = 7.2;
+  const plateHalf = fieldSize / 2;
+  const pulseAge = (time % 7) + 0.35;
+  const diffusionLength = 0.55 + Math.sqrt(diffusivity * 18 * pulseAge);
+  const peakTemperature = sourceStrength * (0.9 / (0.9 + diffusivity * pulseAge));
+  const geometry = useMemo(
     () =>
-      Array.from({ length: cells * cells }, (_, index) => {
-        const x = (index % cells) - (cells - 1) / 2;
-        const z = Math.floor(index / cells) - (cells - 1) / 2;
-        const r2 = x * x + z * z;
-        const spread = 2.5 + diffusivity * 20 + time * 5;
-        const heat = Math.max(0.04, sourceStrength * (2.5 / spread) * Math.exp(-r2 / spread));
-        return { x, z, heat };
+      createSurfaceGeometry({
+        resolution: 49,
+        size: fieldSize,
+        sample: (x, z) => {
+          const r2 = x * x + z * z;
+          const edgeDistance = plateHalf - Math.max(Math.abs(x), Math.abs(z));
+          const coldBoundary = smoothstep(0, 1.05, edgeDistance);
+          const transientPulse =
+            peakTemperature * Math.exp(-r2 / (diffusionLength * diffusionLength));
+          const sustainedSource = sourceStrength * 0.32 * Math.exp(-r2 / 0.48);
+          const temperature = clamp((transientPulse + sustainedSource) * coldBoundary, 0, 1.25);
+          const normalizedTemperature = clamp(temperature / 1.1);
+
+          return {
+            height: temperature * 1.25,
+            color: gradientColor(normalizedTemperature, [
+              "#0f172a",
+              "#0ea5e9",
+              "#22c55e",
+              "#facc15",
+              "#f97316",
+            ]),
+          };
+        },
       }),
-    [diffusivity, sourceStrength, time],
+    [diffusionLength, fieldSize, peakTemperature, plateHalf, sourceStrength],
   );
+  const contours = useMemo(
+    () =>
+      [0.18, 0.34, 0.52, 0.72].flatMap((level) => {
+        const radiusSquared =
+          -diffusionLength * diffusionLength * Math.log(level / peakTemperature);
+        if (!Number.isFinite(radiusSquared) || radiusSquared <= 0) return [];
+
+        const radius = Math.sqrt(radiusSquared);
+        if (radius >= plateHalf) return [];
+
+        return [{ level, radius }];
+      }),
+    [diffusionLength, peakTemperature, plateHalf],
+  );
+  const boundary = [
+    [-plateHalf, 0.03, -plateHalf],
+    [plateHalf, 0.03, -plateHalf],
+    [plateHalf, 0.03, plateHalf],
+    [-plateHalf, 0.03, plateHalf],
+    [-plateHalf, 0.03, -plateHalf],
+  ] as [number, number, number][];
 
   return (
-    <group scale={[0.52, 1, 0.52]}>
-      {items.map(({ x, z, heat }) => (
-        <mesh key={`${x}-${z}`} position={[x, heat, z]}>
-          <boxGeometry args={[0.85, heat * 2, 0.85]} />
-          <meshStandardMaterial color={hslColor(240 - heat * 220, 90, 35 + heat * 35)} />
-        </mesh>
+    <group>
+      <mesh geometry={geometry}>
+        <meshStandardMaterial
+          vertexColors
+          roughness={0.62}
+          metalness={0.02}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <Line points={boundary} color="#94a3b8" lineWidth={1.5} />
+      {contours.map(({ level, radius }) => (
+        <Line
+          key={level}
+          points={circlePoints({ center: [0, 0], radius, y: 0.09 })}
+          color={level > 0.5 ? "#fde68a" : "#7dd3fc"}
+          lineWidth={1.25}
+        />
       ))}
+      <mesh position={[0, 0.08, 0]}>
+        <cylinderGeometry args={[0.26, 0.26, 0.08, 48]} />
+        <meshStandardMaterial color="#fb923c" emissive="#f97316" emissiveIntensity={0.45} />
+      </mesh>
+      <Line
+        points={circlePoints({ center: [0, 0], radius: 0.34, y: 0.16 })}
+        color="#fed7aa"
+        lineWidth={2}
+      />
     </group>
   );
 }
 
 function HeatDiffusionLab({ definition }: LabRouteProps) {
   const [diffusivity, setDiffusivity] = useState(0.18);
-  const [sourceStrength, setSourceStrength] = useState(0.7);
+  const [sourceStrength, setSourceStrength] = useState(0.85);
 
   return (
     <LabSimulationLayout
@@ -863,28 +997,118 @@ function BoltzmannDistributionScene({
   temperature: number;
   densityPower: number;
 }) {
-  const bars = useMemo(
-    () =>
-      Array.from({ length: 28 }, (_, index) => {
-        const energy = 0.15 + index * 0.22;
-        const value = energy ** densityPower * Math.exp(-energy / temperature);
-        return { energy, value };
-      }),
-    [densityPower, temperature],
-  );
-  const max = Math.max(...bars.map((bar) => bar.value), 1e-6);
+  const distribution = useMemo(() => {
+    const energyMax = 7.5;
+    const samples = Array.from({ length: 160 }, (_, index) => {
+      const energy = (index / 159) * energyMax;
+      const densityOfStates = Math.max(energy, 0.03) ** densityPower;
+      const occupancy = densityOfStates * Math.exp(-energy / temperature);
+
+      return { energy, occupancy };
+    });
+    const maxOccupancy = Math.max(...samples.map((sample) => sample.occupancy), 1e-6);
+    const partition = samples.reduce((sum, sample) => sum + sample.occupancy, 0);
+    const meanEnergy =
+      samples.reduce((sum, sample) => sum + sample.energy * sample.occupancy, 0) / partition;
+    const points = samples.map(({ energy, occupancy }) => {
+      const x = (energy / energyMax) * 7.2 - 3.6;
+      const y = (occupancy / maxOccupancy) * 3.2;
+
+      return [x, y, 0] as [number, number, number];
+    });
+    const areaPositions: number[] = [];
+    const areaColors: number[] = [];
+    const areaIndices: number[] = [];
+
+    samples.forEach(({ energy, occupancy }, index) => {
+      const x = (energy / energyMax) * 7.2 - 3.6;
+      const y = (occupancy / maxOccupancy) * 3.2;
+      const color = gradientColor(energy / energyMax, ["#38bdf8", "#22c55e", "#facc15"]);
+
+      areaPositions.push(x, 0, 0, x, y, 0);
+      areaColors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+
+      if (index < samples.length - 1) {
+        const base = index * 2;
+        areaIndices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+      }
+    });
+
+    const areaGeometry = new THREE.BufferGeometry();
+    areaGeometry.setIndex(areaIndices);
+    areaGeometry.setAttribute("position", new THREE.Float32BufferAttribute(areaPositions, 3));
+    areaGeometry.setAttribute("color", new THREE.Float32BufferAttribute(areaColors, 3));
+    areaGeometry.computeVertexNormals();
+
+    const ensemble = Array.from({ length: 72 }, (_, index) => {
+      const target = ((index * 0.61803398875) % 1) * partition;
+      let cumulative = 0;
+      const sample =
+        samples.find((candidate) => {
+          cumulative += candidate.occupancy;
+          return cumulative >= target;
+        }) ?? samples[samples.length - 1];
+      const energyJitter = (((index * 37) % 19) / 18 - 0.5) * 0.16;
+      const x = (clamp(sample.energy + energyJitter, 0, energyMax) / energyMax) * 7.2 - 3.6;
+      const z = -0.72 + ((index % 6) / 5) * 0.42;
+      const y = 0.05 + Math.floor(index / 6) * 0.035;
+
+      return {
+        x,
+        y,
+        z,
+        color: gradientColor(sample.energy / energyMax, ["#38bdf8", "#22c55e", "#facc15"]),
+      };
+    });
+
+    return {
+      areaGeometry,
+      points,
+      ensemble,
+      meanEnergyX: (meanEnergy / energyMax) * 7.2 - 3.6,
+    };
+  }, [densityPower, temperature]);
+  const xAxis = [
+    [-3.8, 0, 0],
+    [3.8, 0, 0],
+  ] as [number, number, number][];
+  const yAxis = [
+    [-3.6, 0, 0],
+    [-3.6, 3.45, 0],
+  ] as [number, number, number][];
 
   return (
-    <group position={[-3.7, 0, 0]}>
-      {bars.map((bar, index) => {
-        const h = (bar.value / max) * 3.2;
-        return (
-          <mesh key={bar.energy} position={[index * 0.28, h / 2, 0]}>
-            <boxGeometry args={[0.19, h, 0.7]} />
-            <meshStandardMaterial color={hslColor(230 - index * 5, 90, 55)} />
-          </mesh>
-        );
-      })}
+    <group rotation={[-0.18, 0, 0]}>
+      <Line points={xAxis} color="#94a3b8" lineWidth={1.4} />
+      <Line points={yAxis} color="#94a3b8" lineWidth={1.4} />
+      <mesh geometry={distribution.areaGeometry}>
+        <meshStandardMaterial
+          vertexColors
+          transparent
+          opacity={0.38}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <Line points={distribution.points} color="#67e8f9" lineWidth={3} />
+      <Line
+        points={[
+          [distribution.meanEnergyX, 0, 0.02],
+          [distribution.meanEnergyX, 3.28, 0.02],
+        ]}
+        color="#fbbf24"
+        lineWidth={1.8}
+      />
+      {distribution.ensemble.map((particle, index) => (
+        <mesh key={index} position={[particle.x, particle.y, particle.z]}>
+          <sphereGeometry args={[0.045, 12, 12]} />
+          <meshStandardMaterial
+            color={particle.color}
+            emissive={particle.color}
+            emissiveIntensity={0.16}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -1004,19 +1228,27 @@ function QuantumTunnelingScene({
   const time = useAnimationTime(0.55 + packetEnergy * 0.15, resetKey);
   const phase = time % 8;
   const center = -3.5 + phase;
+  const barrierX = 0.6;
+  const hasScattered = center >= barrierX;
+  const transmission =
+    barrierHeight <= packetEnergy ? 1 : Math.exp(-2.2 * (barrierHeight - packetEnergy));
+  const reflection = 1 - transmission;
   const points = useMemo(
     () =>
       Array.from({ length: 180 }, (_, index) => {
         const x = index / 179;
         const worldX = x * 8 - 4;
-        const reflected =
-          Math.exp(-((worldX + center + 0.9) ** 2) / 0.3) *
-          Math.max(0, barrierHeight - packetEnergy) *
-          0.25;
-        const transmitted = Math.exp(-((worldX - center) ** 2) / 0.55) * packetEnergy;
+        const reflectedCenter = 2 * barrierX - center;
+        const reflected = hasScattered
+          ? Math.exp(-((worldX - reflectedCenter) ** 2) / 0.55) * packetEnergy * reflection
+          : 0;
+        const transmitted =
+          Math.exp(-((worldX - center) ** 2) / 0.55) *
+          packetEnergy *
+          (hasScattered ? transmission : 1);
         return [worldX, (reflected + transmitted) * 1.2, 0] as [number, number, number];
       }),
-    [barrierHeight, center, packetEnergy],
+    [barrierX, center, hasScattered, packetEnergy, reflection, transmission],
   );
 
   return (
@@ -1057,8 +1289,8 @@ function QuantumTunnelingLab({ definition }: LabRouteProps) {
             onChange={setPacketEnergy}
           />
           <Button
-            variant="outline"
-            className="w-full"
+            variant="ghost"
+            className="w-full rounded-full border border-border/55 bg-background/45 backdrop-blur-xl hover:bg-background/75"
             onClick={() => setResetKey((value) => value + 1)}
           >
             Reset packet
@@ -1077,48 +1309,159 @@ function QuantumTunnelingLab({ definition }: LabRouteProps) {
 
 function Schrodinger2DScene({ spread, potential }: { spread: number; potential: number }) {
   const time = useAnimationTime(0.35);
-  const cells = 17;
-  const centerX = -2.5 + ((time * 1.1) % 5);
-  const items = useMemo(
+  const fieldSize = 7.2;
+  const boundaryHalf = fieldSize / 2;
+  const barrierCenter: [number, number] = [1.25, 0];
+  const barrierRadius = 0.82;
+  const sigma0 = 0.34 + spread * 4.5;
+  const cycle = time % 9;
+  const packetCenter = -3.15 + cycle * 0.86;
+  const encounter = smoothstep(barrierCenter[0] - 1.05, barrierCenter[0] + 0.35, packetCenter);
+  const transmission = clamp(Math.exp(-potential * 0.68), 0.12, 1);
+  const reflection = 1 - transmission;
+  const sigma = sigma0 * (1 + cycle * 0.055);
+  const waveNumber = 7.2;
+  const geometry = useMemo(
     () =>
-      Array.from({ length: cells * cells }, (_, index) => {
-        const x = ((index % cells) - (cells - 1) / 2) * 0.42;
-        const z = (Math.floor(index / cells) - (cells - 1) / 2) * 0.42;
-        const freeDensity =
-          Math.exp(-(((x - centerX) ** 2 + z * z) / (spread * 18))) *
-          (0.6 + 0.4 * Math.sin(time + x * 2));
-        const potentialProfile = Math.exp(-(((x - 2.4) ** 2 + z * z) / 0.75));
-        const scattering = Math.max(
-          0.2,
-          1 -
-            potential * 0.3 * potentialProfile +
-            potential * 0.12 * potentialProfile * Math.sin(time * 2 + z * 5),
-        );
-        const density = freeDensity * scattering;
-        return { x, z, density: Math.max(0.03, density) };
+      createSurfaceGeometry({
+        resolution: 55,
+        size: fieldSize,
+        sample: (x, z) => {
+          const edgeFade =
+            smoothstep(0, 0.55, boundaryHalf - Math.abs(x)) *
+            smoothstep(0, 0.55, boundaryHalf - Math.abs(z));
+          const incidentEnvelope = Math.exp(
+            -(((x - packetCenter) ** 2 + z * z) / (2 * sigma ** 2)),
+          );
+          const reflectedCenter = barrierCenter[0] - (packetCenter - barrierCenter[0]) * 0.72;
+          const reflectedEnvelope =
+            encounter *
+            reflection *
+            Math.exp(-(((x - reflectedCenter) ** 2 + z * z) / (2 * (sigma * 1.08) ** 2))) *
+            smoothstep(barrierCenter[0] + 0.25, barrierCenter[0] - 1.3, x);
+          const transmittedEnvelope =
+            (1 - encounter + encounter * transmission) *
+            incidentEnvelope *
+            smoothstep(barrierCenter[0] - 0.55, barrierCenter[0] + 0.35, x + sigma);
+          const incomingEnvelope = incidentEnvelope * (1 - encounter * 0.55);
+          const interference =
+            1 +
+            0.32 *
+              encounter *
+              reflection *
+              Math.cos(2 * waveNumber * (x - barrierCenter[0]) - time * 5.5) *
+              Math.exp(-((x - barrierCenter[0]) ** 2 + z * z) / 3.2);
+          const barrierProfile = Math.exp(
+            -(
+              ((x - barrierCenter[0]) ** 2 + (z - barrierCenter[1]) ** 2) /
+              (barrierRadius * barrierRadius)
+            ),
+          );
+          const density =
+            clamp(
+              (incomingEnvelope + transmittedEnvelope + reflectedEnvelope) *
+                interference *
+                edgeFade,
+            ) *
+            (1 - clamp(potential * 0.26) * barrierProfile);
+          const phase =
+            waveNumber * x -
+            time * 4.6 +
+            encounter * reflection * Math.atan2(z, x - barrierCenter[0]) +
+            potential * barrierProfile;
+          const phaseHue = (((phase / (Math.PI * 2)) % 1) + 1) % 1;
+
+          return {
+            height: density * 1.7,
+            color: new THREE.Color(hslColor(phaseHue * 360, 82, 24 + density * 45)),
+          };
+        },
       }),
-    [centerX, potential, spread, time],
+    [
+      barrierCenter,
+      barrierRadius,
+      boundaryHalf,
+      encounter,
+      fieldSize,
+      packetCenter,
+      potential,
+      reflection,
+      sigma,
+      time,
+      transmission,
+    ],
   );
+  const boundary = [
+    [-boundaryHalf, 0.035, -boundaryHalf],
+    [boundaryHalf, 0.035, -boundaryHalf],
+    [boundaryHalf, 0.035, boundaryHalf],
+    [-boundaryHalf, 0.035, boundaryHalf],
+    [-boundaryHalf, 0.035, -boundaryHalf],
+  ] as [number, number, number][];
+  const densityContours = useMemo(() => {
+    const incident = [0.28, 0.48, 0.68].map((level) => ({
+      center: [packetCenter, 0] as [number, number],
+      radius: sigma * Math.sqrt(-2 * Math.log(level)),
+      level,
+      color: "#bfdbfe",
+    }));
+    const reflectedCenter = barrierCenter[0] - (packetCenter - barrierCenter[0]) * 0.72;
+    const reflected =
+      encounter > 0.12
+        ? [0.36, 0.58]
+            .map((level) => ({
+              center: [reflectedCenter, 0] as [number, number],
+              radius: sigma * Math.sqrt(-2 * Math.log(level / Math.max(reflection, 0.12))),
+              level,
+              color: "#f0abfc",
+            }))
+            .filter((contour) => Number.isFinite(contour.radius) && contour.radius > 0)
+        : [];
+
+    return [...incident, ...reflected].filter(
+      (contour) => contour.radius > 0.12 && contour.radius < boundaryHalf,
+    );
+  }, [barrierCenter, boundaryHalf, encounter, packetCenter, reflection, sigma]);
 
   return (
     <group>
-      {items.map(({ x, z, density }) => (
-        <mesh key={`${x}-${z}`} position={[x, density * 0.8, z]}>
-          <boxGeometry args={[0.36, density * 1.6, 0.36]} />
-          <meshStandardMaterial color={hslColor(230 - density * 180, 90, 45 + density * 25)} />
-        </mesh>
-      ))}
-      <mesh position={[2.4, potential * 0.45, 0]}>
-        <cylinderGeometry args={[0.8, 0.8, Math.max(0.05, potential * 0.9), 40]} />
-        <meshStandardMaterial color="#fb7185" transparent opacity={0.34} />
+      <mesh geometry={geometry}>
+        <meshStandardMaterial
+          vertexColors
+          roughness={0.58}
+          metalness={0.02}
+          side={THREE.DoubleSide}
+        />
       </mesh>
+      <Line points={boundary} color="#94a3b8" lineWidth={1.5} />
+      {densityContours.map((contour, index) => (
+        <Line
+          key={`${contour.level}-${index}`}
+          points={circlePoints({ center: contour.center, radius: contour.radius, y: 0.08 })}
+          color={contour.color}
+          lineWidth={1.1}
+        />
+      ))}
+      <mesh position={[barrierCenter[0], 0.09, barrierCenter[1]]}>
+        <cylinderGeometry args={[barrierRadius, barrierRadius, 0.12 + potential * 0.12, 72]} />
+        <meshStandardMaterial color="#fb7185" transparent opacity={0.28} roughness={0.45} />
+      </mesh>
+      <Line
+        points={circlePoints({
+          center: barrierCenter,
+          radius: barrierRadius,
+          y: 0.18 + potential * 0.06,
+        })}
+        color="#fda4af"
+        lineWidth={1.8}
+      />
     </group>
   );
 }
 
 function QuantumWavePacket2DLab({ definition }: LabRouteProps) {
-  const [spread, setSpread] = useState(0.06);
-  const [potential, setPotential] = useState(0.8);
+  const [spread, setSpread] = useState(0.07);
+  const [potential, setPotential] = useState(1.1);
 
   return (
     <LabSimulationLayout
@@ -1149,234 +1492,25 @@ function QuantumWavePacket2DLab({ definition }: LabRouteProps) {
   );
 }
 
-export const LAB_SIMULATIONS: LabDefinition[] = [
-  {
-    category: "mechanics",
-    slug: "projectile-motion",
-    title: "Projectile Motion",
-    summary: "Launch angle, speed, and gravity shape a ballistic trajectory.",
-    principle:
-      "Horizontal velocity stays constant while vertical velocity changes under uniform gravitational acceleration.",
-    equations: [
-      "x(t) = v0 cos(theta) t",
-      "y(t) = v0 sin(theta) t - 1/2 g t^2",
-      "R = v0^2 sin(2 theta) / g",
-    ],
-    method: "Analytic constant-acceleration kinematics sampled as a 3D trajectory.",
-    expectedOutput:
-      "The orange sphere follows the cyan arc; speed and gravity reshape the path in real time.",
-    component: ProjectileMotionLab,
-  },
-  {
-    category: "mechanics",
-    slug: "spring-mass-oscillator",
-    title: "Spring-Mass Oscillator",
-    summary: "A driven spring trades energy between motion and stored elastic potential.",
-    principle:
-      "Hooke's law pulls displacement back toward equilibrium while damping removes mechanical energy.",
-    equations: ["m x'' + c x' + kx = F0 sin(omega t)", "U = 1/2 kx^2"],
-    method: "3D oscillator animation with a dynamic spring line and cube mass.",
-    expectedOutput:
-      "The block oscillates around the equilibrium marker while stiffness and damping alter motion.",
-    component: SpringMassLab,
-  },
-  {
-    category: "mechanics",
-    slug: "damped-pendulum",
-    title: "Damped Pendulum",
-    summary: "Length, gravity, damping, and initial angle control pendulum motion.",
-    principle:
-      "For small angles, a pendulum behaves like a harmonic oscillator with period set by length and gravity.",
-    equations: ["theta'' + (g/L) sin(theta) = -b theta'", "T ~= 2 pi sqrt(L/g)"],
-    method: "Damped small-angle oscillator rendered as a 3D rod, bob, and arc envelope.",
-    expectedOutput: "The bob swings through a visible arc and decays faster as damping rises.",
-    component: DampedPendulumLab,
-  },
-  {
-    category: "electromagnetism",
-    slug: "electric-field-lines",
-    title: "Electric Field Lines",
-    summary: "Field vectors and streamlines from two point charges.",
-    principle:
-      "Coulomb fields add linearly, so the net electric field is the vector sum of each charge contribution.",
-    equations: ["E(r) = sum_i k q_i (r - r_i) / |r - r_i|^3", "F = qE"],
-    method: "3D streamline curves seeded around each charge with charge-dependent bending.",
-    expectedOutput:
-      "Cyan and rose field lines emerge from the charge spheres and change as spacing or polarity changes.",
-    component: ElectricFieldLinesLab,
-  },
-  {
-    category: "electromagnetism",
-    slug: "charged-particle-motion",
-    title: "Charged Particle Motion",
-    summary: "A charged particle curves through crossed electric and magnetic fields.",
-    principle:
-      "The Lorentz force bends velocity perpendicular to B while E accelerates along its direction.",
-    equations: ["m dv/dt = q(E + v x B)", "dr/dt = v"],
-    method: "Parametric 3D helical-drift trajectory driven by field controls.",
-    expectedOutput:
-      "The particle leaves a 3D cyan trail whose radius and drift change with E and B.",
-    component: ChargedParticleMotionLab,
-  },
-  {
-    category: "electromagnetism",
-    slug: "em-wave-propagation",
-    title: "EM Wave Propagation",
-    summary: "Electric and magnetic waves propagate as perpendicular 3D fields.",
-    principle: "Maxwell curl equations couple E and H fields so changes in one drive the other.",
-    equations: ["dE/dt = c^2 dB/dx", "dB/dt = -dE/dx"],
-    method: "Animated 3D field curves with E and H components perpendicular to propagation.",
-    expectedOutput:
-      "Cyan and rose waves travel along the same axis with a visible phase relationship.",
-    component: ElectromagneticWaveLab,
-  },
-  {
-    category: "thermodynamics",
-    slug: "heat-diffusion",
-    title: "Heat Diffusion Plate",
-    summary: "A hot spot spreads through a square plate.",
-    principle:
-      "Heat flows from high temperature to low temperature according to the temperature Laplacian.",
-    equations: ["dT/dt = alpha (d2T/dx2 + d2T/dy2)"],
-    method: "3D height-field surface where color and height encode temperature.",
-    expectedOutput: "A central thermal peak flattens and spreads as diffusivity increases.",
-    component: HeatDiffusionLab,
-  },
-  {
-    category: "thermodynamics",
-    slug: "ideal-gas",
-    title: "Ideal Gas Kinetics",
-    summary: "Particles move in a 3D box and form a kinetic gas cloud.",
-    principle: "Microscopic elastic motion produces macroscopic pressure and temperature behavior.",
-    equations: ["PV = NkT", "1/2 m <v^2> proportional to T"],
-    method: "Deterministic 3D particle cloud constrained inside a transparent box.",
-    expectedOutput:
-      "Particles move faster and fill the box more energetically as temperature rises.",
-    component: IdealGasLab,
-  },
-  {
-    category: "thermodynamics",
-    slug: "boltzmann-distribution",
-    title: "Boltzmann Energy Distribution",
-    summary: "A thermal energy distribution appears as a 3D bar chart.",
-    principle:
-      "At equilibrium, states with energy E occur with probability weighted by exp(-E/kT).",
-    equations: ["P(E) proportional to g(E) exp(-E/kT)", "S = -sum_i p_i ln p_i"],
-    method: "3D bars evaluate the Boltzmann shape with a density-of-states factor.",
-    expectedOutput: "The distribution broadens at high temperature and narrows at low temperature.",
-    component: BoltzmannDistributionLab,
-  },
-  {
-    category: "quantum-mechanics",
-    slug: "particle-in-box",
-    title: "Particle in a Box",
-    summary: "Bound-state superposition evolves inside infinite potential walls.",
-    principle: "Stationary eigenstates gain phase at rates set by quantized energies.",
-    equations: [
-      "psi_n(x) = sqrt(2/L) sin(n pi x/L)",
-      "E_n proportional to n^2",
-      "|psi|^2 is probability density",
-    ],
-    method: "3D probability-density curve between two wall meshes.",
-    expectedOutput:
-      "The cyan density curve oscillates as the ground state interferes with a selected excited state.",
-    component: ParticleInBoxLab,
-  },
-  {
-    category: "quantum-mechanics",
-    slug: "quantum-tunneling",
-    title: "Quantum Tunneling",
-    summary: "A wave packet partly transmits through a finite barrier.",
-    principle:
-      "The Schrodinger equation allows nonzero probability inside and beyond classically forbidden barriers.",
-    equations: ["i dpsi/dt = -1/2 d2psi/dx2 + V(x) psi", "rho = |psi|^2"],
-    method: "3D probability curve moving through a translucent potential wall.",
-    expectedOutput: "A cyan packet interacts with the rose barrier and leaves a transmitted tail.",
-    component: QuantumTunnelingLab,
-  },
-  {
-    category: "quantum-mechanics",
-    slug: "schrodinger-2d",
-    title: "2D Schrodinger Wave Packet",
-    summary: "A Gaussian wave packet moves through a circular potential region.",
-    principle:
-      "The 2D time-dependent Schrodinger equation disperses and scatters probability density.",
-    equations: ["i dpsi/dt = -1/2 Laplacian(psi) + V(x,y) psi", "rho(x,y) = |psi|^2"],
-    method: "3D probability terrain with a translucent potential cylinder.",
-    expectedOutput:
-      "The probability surface moves and deforms around the highlighted potential region.",
-    component: QuantumWavePacket2DLab,
-  },
-];
+const LAB_COMPONENTS: Record<string, ComponentType<LabRouteProps>> = {
+  "projectile-motion": ProjectileMotionLab,
+  "spring-mass-oscillator": SpringMassLab,
+  "damped-pendulum": DampedPendulumLab,
+  "electric-field-lines": ElectricFieldLinesLab,
+  "charged-particle-motion": ChargedParticleMotionLab,
+  "em-wave-propagation": ElectromagneticWaveLab,
+  "heat-diffusion": HeatDiffusionLab,
+  "ideal-gas": IdealGasLab,
+  "boltzmann-distribution": BoltzmannDistributionLab,
+  "particle-in-box": ParticleInBoxLab,
+  "quantum-tunneling": QuantumTunnelingLab,
+  "schrodinger-2d": QuantumWavePacket2DLab,
+};
 
-export function getLabSimulationPath(simulation: Pick<LabDefinition, "category" | "slug">) {
-  return `/simulations/${simulation.category}/${simulation.slug}`;
-}
-
-function SimulationNavigator({ currentSimulation }: { currentSimulation: LabDefinition }) {
-  const currentIndex = LAB_SIMULATIONS.findIndex(
-    (simulation) =>
-      simulation.category === currentSimulation.category &&
-      simulation.slug === currentSimulation.slug,
-  );
-  const previousSimulation =
-    LAB_SIMULATIONS[(currentIndex - 1 + LAB_SIMULATIONS.length) % LAB_SIMULATIONS.length];
-  const nextSimulation = LAB_SIMULATIONS[(currentIndex + 1) % LAB_SIMULATIONS.length];
-
-  return (
-    <div className="rounded-xl border border-border/40 bg-background/70 p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 font-medium text-foreground">
-          <ListTree className="size-4" />
-          Navigator
-        </div>
-        <Badge variant="secondary">{LAB_SIMULATIONS.length} labs</Badge>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Button asChild variant="outline" size="sm" className="justify-start">
-          <Link to={getLabSimulationPath(previousSimulation)}>
-            <ChevronLeft className="size-4" />
-            Previous
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="justify-end">
-          <Link to={getLabSimulationPath(nextSimulation)}>
-            Next
-            <ChevronRight className="size-4" />
-          </Link>
-        </Button>
-      </div>
-      <div className="mt-3 space-y-3">
-        {LAB_CATEGORY_ORDER.map((category) => (
-          <div key={category}>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {LAB_CATEGORY_LABELS[category]}
-            </div>
-            <div className="mt-1 grid gap-1">
-              {LAB_SIMULATIONS.filter((simulation) => simulation.category === category).map(
-                (simulation) => {
-                  const active =
-                    simulation.category === currentSimulation.category &&
-                    simulation.slug === currentSimulation.slug;
-                  return (
-                    <Button
-                      key={simulation.slug}
-                      asChild
-                      variant={active ? "default" : "ghost"}
-                      className="h-auto w-full justify-start whitespace-normal rounded-lg px-2 py-1.5 text-left text-xs"
-                    >
-                      <Link to={getLabSimulationPath(simulation)}>{simulation.title}</Link>
-                    </Button>
-                  );
-                },
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+export const LAB_SIMULATIONS: LabDefinition[] = LAB_SIMULATION_METADATA.map((simulation) => ({
+  ...simulation,
+  component: LAB_COMPONENTS[simulation.slug],
+}));
 
 export function PhysicsLabRoute() {
   const params = useParams();

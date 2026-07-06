@@ -129,3 +129,71 @@
 - Fixed simulation correctness issues: Coulomb-superposed electric field lines, speed-scaled charged-particle gyro-radius, in-phase EM E/B waves, flattening heat diffusion, full ideal-gas particle count, meaningful Boltzmann density-of-states control, actual tunneling reset, wave-packet potential scattering, central-mass visual scaling, and GW frequency = 2x orbital frequency.
 - Added a Mercury integrator regression test.
 - Validation passed: `vp check`, `vp test` (36 tests), and `vp build`.
+
+## 2026-07-05 Simulation Navigation Cleanup Plan
+
+- [x] Keep the in-page Navigator scoped to lab groups and out of Relativity standalone simulations.
+- [x] Add previous and next simulation controls to the floating header.
+- [x] Remove the simulation-page Powered by Coody footer while leaving the homepage footer intact.
+- [x] Run `vp check`, `vp test`, and `vp build`, then record results.
+
+## 2026-07-05 Simulation Navigation Cleanup Results
+
+- The floating header now has previous and next arrow buttons that cycle through standalone Relativity simulations and lab simulations in menu order.
+- The in-page Navigator remains scoped to lab categories, so standalone Relativity simulations do not render it.
+- Simulation pages no longer mount the Powered by Coody footer, and the unused simulation footer component was removed; the homepage footer remains in `src/home.tsx`.
+- Validation passed: `vp install` completed with existing peer warnings, `vp check`, `vp test` (36 tests), and `vp build`.
+
+## 2026-07-05 Code Analysis Plan
+
+- [x] Inspect configured validation commands and current worktree context.
+- [x] Run `vp install`, `vp check`, `vp test`, and `vp build`.
+- [x] Review core physics and simulation source for concrete bugs not caught by automated checks.
+- [x] Record findings, validation output, and recommended fixes.
+
+## 2026-07-05 Code Analysis Results
+
+- Initial validation passed: `vp install` completed with existing peer warnings, `vp check`, `vp test` (36 tests), and `vp build`.
+- Fixed reviewed bugs: binary gravitational-wave helper now uses dominant GW frequency at `2 * orbitalFrequency`, time dilation returns `0` at/inside the horizon, Christoffel symbols preserve lower-index symmetry, crossed-field drift uses `E / B`, tunneling transmission responds to barrier height, zero-amplitude wave colors avoid `NaN`, and Mercury body count resets when controls recreate the scene.
+- Added regression coverage for doubled GW oscillation, horizon time dilation, and Christoffel lower-index symmetry.
+- Final validation passed: `vp check`, `vp test` (37 tests), and `vp build`.
+
+## 2026-07-05 Simulation Chrome Alignment Plan
+
+- [x] Render the floating header from the shared simulation layout so global view controls can use the layout's camera/grid state directly.
+- [x] Reorder the header so Home is icon-only, the theme toggle sits immediately after it, and camera/view/grid/axis controls sit next in compact icon-only form.
+- [x] Remove camera/view/grid/axis controls and the visible duplicate title from the right controls panel.
+- [x] Anchor the left and right panels under the header, make their chrome transparent with backdrop blur, and switch collapse handles to upward/downward behavior.
+- [x] Run `vp check`, `vp test`, and `vp build`, then record results.
+
+## 2026-07-05 Simulation Chrome Alignment Results
+
+- Floating simulation chrome now renders from `FloatingSimulationLayout`, with Home, theme, camera mode, view direction, grid, and axis controls grouped in the header.
+- The right controls panel now omits the visible duplicate title and contains only simulation-specific parameters.
+- Left and right panels are top-anchored below the header, use translucent blurred surfaces, and collapse via up/down handles.
+- Lab route metadata was extracted to `src/simulations/physics-labs-data.ts` to avoid a header/layout circular import while keeping navigation labels shared.
+- Validation passed: `vp check`, `vp test` (37 tests), and `vp build`.
+
+## 2026-07-05 Header Panel Toggle Plan
+
+- [x] Move left Information and right Controls open state into the shared floating simulation layout.
+- [x] Add header icon buttons for Information and Settings panel toggles, separated from navigation and camera controls.
+- [x] Remove the view-direction dropdown and make the view direction control cycle directly as an icon-only button.
+- [x] Place previous and next simulation buttons side by side after the simulation selector.
+- [x] Run `vp check`, `vp test`, and `vp build`, then record results.
+
+## 2026-07-05 Physics Visualization Redesign Plan
+
+- [x] Inspect screenshots and current implementations for Heat Diffusion Plate, Boltzmann Energy Distribution, and 2D Schrodinger Wave Packet.
+- [x] Replace heat diffusion tiles with a continuous temperature field: height/color = temperature, contour rings = isotherms, center marker = heat source, square frame = cold boundary.
+- [x] Replace Boltzmann blocks with a normalized smooth probability-density curve, filled occupancy area, sampled particle ensemble, and mean-energy marker.
+- [x] Replace Schrodinger cuboids with a smooth `|psi|^2` surface, phase coloring, density contours, explicit square boundary, and circular potential barrier.
+- [x] Run `vp check`, `vp test`, and `vp build`, then commit, push, and release.
+
+## 2026-07-05 Physics Visualization Redesign Results
+
+- Heat Diffusion Plate now uses a smooth field surface where height and color both represent temperature, with isotherm contours, a central source, and a cold boundary frame.
+- Boltzmann Energy Distribution now uses a normalized density curve, probability fill, sampled occupancy particles, and a mean-energy marker instead of staircase blocks.
+- 2D Schrodinger Wave Packet now uses a smooth `|psi|^2` surface, phase hue, density contours, square boundary, and circular potential barrier with reflected/transmitted packet behavior.
+- Header panels are toggled from Information and Settings icons in the header; previous and next simulation controls are adjacent, and the view-direction dropdown was replaced by an icon-only cycle control.
+- Local validation passed: `vp check`, `vp test` (37 tests), and `vp build`.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import Controls from "@/components/controls";
+import Header from "@/components/header";
 import Information from "@/components/information";
 import Renderer from "@/components/renderer";
 import type { CameraViewDirection, CameraViewMode } from "@/components/renderer";
@@ -35,9 +36,13 @@ export function FloatingSimulationLayout({
 }: FloatingSimulationLayoutProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [showAxis, setShowAxis] = useState(true);
+  const [isInformationOpen, setIsInformationOpen] = useState(false);
+  const [isControlsOpen, setIsControlsOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraViewMode>(defaultCameraMode);
   const [cameraDirection, setCameraDirection] =
     useState<CameraViewDirection>(defaultCameraDirection);
+  const informationPanelId = "simulation-information-panel";
+  const controlsPanelId = "simulation-controls-panel";
 
   return (
     <div className="h-screen w-full relative">
@@ -54,21 +59,34 @@ export function FloatingSimulationLayout({
         {children}
       </Renderer>
 
-      <Controls
-        title={controlsTitle}
-        showGrid={showGrid}
-        showAxis={showAxis}
-        cameraMode={cameraMode}
-        cameraDirection={cameraDirection}
-        onGridToggle={setShowGrid}
-        onAxisToggle={setShowAxis}
-        onCameraModeChange={setCameraMode}
-        onCameraDirectionChange={setCameraDirection}
-      >
+      <div className="absolute top-4 left-1/2 z-50 -translate-x-1/2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Header
+            showGrid={showGrid}
+            showAxis={showAxis}
+            cameraMode={cameraMode}
+            cameraDirection={cameraDirection}
+            isInformationOpen={isInformationOpen}
+            isControlsOpen={isControlsOpen}
+            informationPanelId={informationPanelId}
+            controlsPanelId={controlsPanelId}
+            onGridToggle={setShowGrid}
+            onAxisToggle={setShowAxis}
+            onCameraModeChange={setCameraMode}
+            onCameraDirectionChange={setCameraDirection}
+            onInformationToggle={setIsInformationOpen}
+            onControlsToggle={setIsControlsOpen}
+          />
+        </div>
+      </div>
+
+      <Controls id={controlsPanelId} title={controlsTitle} open={isControlsOpen}>
         {controls}
       </Controls>
 
-      <Information title={informationTitle}>{information}</Information>
+      <Information id={informationPanelId} title={informationTitle} open={isInformationOpen}>
+        {information}
+      </Information>
     </div>
   );
 }

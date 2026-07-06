@@ -1,8 +1,5 @@
-import { useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { cn } from "@/utils/tailwind";
 
@@ -14,27 +11,13 @@ interface CollapsiblePanelProps {
   icon: ReactNode;
   children: ReactNode;
   contentClassName?: string;
-  defaultOpen?: boolean;
+  id?: string;
+  open: boolean;
+  showTitle?: boolean;
 }
 
 function getPanelPosition(side: PanelSide) {
   return side === "left" ? "left-4" : "right-4";
-}
-
-function getOpenIcon(side: PanelSide) {
-  return side === "left" ? (
-    <ChevronLeft className="h-3 w-3" />
-  ) : (
-    <ChevronRight className="h-3 w-3" />
-  );
-}
-
-function getClosedIcon(side: PanelSide) {
-  return side === "left" ? (
-    <ChevronRight className="h-4 w-4" />
-  ) : (
-    <ChevronLeft className="h-4 w-4" />
-  );
 }
 
 export function CollapsiblePanel({
@@ -43,50 +26,31 @@ export function CollapsiblePanel({
   icon,
   children,
   contentClassName,
-  defaultOpen = true,
+  id,
+  open,
+  showTitle = true,
 }: CollapsiblePanelProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  if (!open) return null;
 
   return (
-    <div
-      className={cn(
-        "absolute top-1/2 z-40 -translate-y-1/2 pointer-events-auto",
-        getPanelPosition(side),
-      )}
-    >
-      <div className="flex items-center gap-2">
-        {isOpen && (
-          <Card className="w-80 max-h-[calc(100vh-200px)] overflow-y-auto border-border/40 bg-background/80 backdrop-blur-xl shadow-2xl">
+    <div className={cn("absolute top-20 z-40 pointer-events-auto", getPanelPosition(side))}>
+      <div className="flex items-start gap-2">
+        <Card
+          id={id}
+          role="region"
+          aria-label={title}
+          className="w-[min(20rem,calc(100vw-2rem))] max-h-[calc(100vh-6rem)] overflow-y-auto border-border/55 bg-background/65 shadow-2xl backdrop-blur-2xl dark:bg-background/55"
+        >
+          {showTitle && (
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  {icon}
-                  {title}
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 rounded-full"
-                  onClick={() => setIsOpen(false)}
-                >
-                  {getOpenIcon(side)}
-                </Button>
-              </div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                {icon}
+                {title}
+              </CardTitle>
             </CardHeader>
-            <CardContent className={cn("space-y-4", contentClassName)}>{children}</CardContent>
-          </Card>
-        )}
-
-        {!isOpen && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-full h-10 w-10 border-border/40 bg-background/80 backdrop-blur-xl shadow-2xl"
-            onClick={() => setIsOpen(true)}
-          >
-            {getClosedIcon(side)}
-          </Button>
-        )}
+          )}
+          <CardContent className={cn("space-y-4", contentClassName)}>{children}</CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
 import { Mesh, Vector3 } from "three";
 import { PHYSICS_CONSTANTS } from "@/utils/constants";
+import { cn } from "@/utils/tailwind";
 
 /**
  * Simulation units.
@@ -373,7 +374,10 @@ function MercuryPrecessionSimulation() {
         min={0.5}
         max={5}
         step={0.1}
-        onChange={(value) => setStarMass(value * PHYSICS_CONSTANTS.M_sun)}
+        onChange={(value) => {
+          setStarMass(value * PHYSICS_CONSTANTS.M_sun);
+          setBodyCount(1);
+        }}
         formatValue={(value) => `${value.toFixed(1)} M☉`}
       />
 
@@ -383,7 +387,10 @@ function MercuryPrecessionSimulation() {
         min={0.01}
         max={10}
         step={0.01}
-        onChange={(value) => setPlanetMass(value * 5.972e24)}
+        onChange={(value) => {
+          setPlanetMass(value * 5.972e24);
+          setBodyCount(1);
+        }}
         formatValue={(value) => `${value.toFixed(2)} M⊕`}
       />
 
@@ -393,7 +400,10 @@ function MercuryPrecessionSimulation() {
         min={0}
         max={0.9}
         step={0.01}
-        onChange={setEccentricity}
+        onChange={(value) => {
+          setEccentricity(value);
+          setBodyCount(1);
+        }}
         formatValue={(value) => value.toFixed(3)}
       />
 
@@ -410,15 +420,24 @@ function MercuryPrecessionSimulation() {
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
         <Label>General Relativity</Label>
         <Button
-          variant={showRelativity ? "default" : "outline"}
+          variant="ghost"
           size="sm"
+          className={cn(
+            "rounded-full border border-border/55 bg-background/45 backdrop-blur-xl hover:bg-background/75",
+            showRelativity &&
+              "border-primary/60 bg-primary/80 text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+          )}
           onClick={() => setShowRelativity(!showRelativity)}
         >
           {showRelativity ? "ON" : "OFF"}
         </Button>
       </div>
 
-      <Button variant="outline" className="w-full" onClick={handleReset}>
+      <Button
+        variant="ghost"
+        className="w-full rounded-full border border-border/55 bg-background/45 backdrop-blur-xl hover:bg-background/75"
+        onClick={handleReset}
+      >
         Reset Simulation
       </Button>
 
