@@ -21,14 +21,14 @@ varying vec2 vUv;
 void main() {
   vec2 centered = vUv - 0.5;
   float widthFactor = smoothstep(480.0, 1280.0, uResolution.x);
-  float density = mix(12.0, 22.0, widthFactor);
-  float wave = sin(vUv.x * 6.0 + uTime * 0.8) * 0.052;
-  wave += sin(vUv.x * 14.0 - uTime * 0.48) * 0.024;
+  float density = mix(8.0, 15.0, widthFactor);
+  float wave = sin(vUv.x * 5.0 + uTime * 0.8) * 0.09;
+  wave += sin(vUv.x * 11.0 - uTime * 0.48) * 0.045;
 
   float linePhase = fract((vUv.y + wave) * density + uTime * 0.035);
-  float line = smoothstep(0.18, 0.0, abs(linePhase - 0.5));
-  float edgeFade = smoothstep(0.5, 0.08, length(centered * vec2(0.72, 1.25)));
-  float verticalFade = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.74, vUv.y);
+  float line = 1.0 - smoothstep(0.0, 0.28, abs(linePhase - 0.5));
+  float edgeFade = 1.0 - smoothstep(0.12, 0.62, abs(centered.y));
+  float verticalFade = smoothstep(0.0, 0.1, vUv.y) * (1.0 - smoothstep(0.9, 1.0, vUv.y));
   float pulse = 0.68 + 0.32 * sin(vUv.x * 7.0 + vUv.y * 2.0 + uTime * 0.8);
   vec3 base = vec3(0.88, 0.93, 1.0);
   vec3 accent = vec3(0.38, 0.74, 1.0);
@@ -207,7 +207,7 @@ export function WaveText({ names, className, intervalMs = 2800 }: WaveTextProps)
     <span
       ref={mountRef}
       className={cn(
-        "relative block h-[clamp(8rem,24vw,16rem)] w-full min-w-0 overflow-hidden",
+        "relative block h-[clamp(10rem,32vw,22rem)] w-full min-w-0 overflow-hidden",
         className,
       )}
     >

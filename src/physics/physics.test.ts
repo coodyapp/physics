@@ -130,16 +130,18 @@ describe("gravitational — gravitational waves", () => {
     const m = 1.4 * M_sun;
     const expected = m / Math.pow(2, 1 / 5);
     // Reconstruct chirp mass from the amplitude ratio at unit distance & frequency.
-    // h = 4 (G M_c)^(5/3) (pi f)^(2/3) / (c^4 r)  =>  M_c = (h c^4 r / (4 (pi f)^(2/3)))^(3/5) / G
+    // h = 4 (G M_c)^(5/3) (pi f_gw)^(2/3) / (c^4 r)  =>  M_c = (h c^4 r / (4 (pi f_gw)^(2/3)))^(3/5) / G
     const r = 1e20;
-    const f = 100;
+    const orbitalFrequency = 100;
+    const waveFrequency = 2 * orbitalFrequency;
     const h0 = calculateGravitationalWaveAmplitude(
-      { ...baseSource, orbitalFrequency: f },
+      { ...baseSource, orbitalFrequency },
       new Vector3(r, 0, 0),
       0,
     );
     const amp = Math.abs(h0); // cos(0) = 1
-    const mc = Math.pow((amp * c ** 4 * r) / (4 * Math.pow(Math.PI * f, 2 / 3)), 3 / 5) / G;
+    const mc =
+      Math.pow((amp * c ** 4 * r) / (4 * Math.pow(Math.PI * waveFrequency, 2 / 3)), 3 / 5) / G;
     // Relative check (values are ~1e30, so absolute toBeCloseTo is not meaningful).
     expect(mc / expected).toBeCloseTo(1, 10);
   });
@@ -152,14 +154,16 @@ describe("gravitational — gravitational waves", () => {
     expect(h1 / h2).toBeCloseTo(2, 6);
   });
 
-  it("amplitude oscillates as cos(2 pi f t)", () => {
+  it("amplitude oscillates at twice the orbital frequency", () => {
     const f = baseSource.orbitalFrequency;
     const observer = new Vector3(1e20, 0, 0);
     const h0 = calculateGravitationalWaveAmplitude(baseSource, observer, 0);
-    const hQuarter = calculateGravitationalWaveAmplitude(baseSource, observer, 1 / (4 * f));
+    const hQuarterWave = calculateGravitationalWaveAmplitude(baseSource, observer, 1 / (8 * f));
+    const hQuarterOrbit = calculateGravitationalWaveAmplitude(baseSource, observer, 1 / (4 * f));
     // cos(0) = 1, cos(pi/2) = 0.
     expect(Math.abs(h0)).toBeGreaterThan(0);
-    expect(Math.abs(hQuarter)).toBeCloseTo(0, 6);
+    expect(Math.abs(hQuarterWave)).toBeCloseTo(0, 6);
+    expect(hQuarterOrbit / h0).toBeCloseTo(-1, 6);
   });
 
   it("calculateStrainTensor builds plus and cross polarizations", () => {
@@ -256,6 +260,8 @@ describe("SpacetimeService", () => {
 
   it("time dilation -> 0 at the horizon and -> 1 far away", () => {
     const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    expect(SpacetimeService.calculateTimeDilation(rs, M_sun)).toBe(0);
+    expect(SpacetimeService.calculateTimeDilation(rs / 2, M_sun)).toBe(0);
     expect(SpacetimeService.calculateTimeDilation(rs * 1.1, M_sun)).toBeCloseTo(
       Math.sqrt(1 - 1 / 1.1),
       6,
@@ -268,6 +274,13 @@ describe("SpacetimeService", () => {
       Math.sqrt((G * M_sun) / 1e9),
       8,
     );
+  });
+
+  it("keeps Christoffel lower indices symmetric", () => {
+    const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    const symbols = SpacetimeService.calculateChristoffelSymbols(new Vector3(10 * rs, 0, 0), M_sun);
+
+    expect(symbols[0][1][0]).toBeCloseTo(symbols[0][0][1], 10);
   });
 
   it("Ricci scalar scales as M / r^3", () => {

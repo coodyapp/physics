@@ -63,6 +63,7 @@ export class SpacetimeService {
 
     // Non-zero components (simplified)
     symbols[0][0][1] = rs / (2 * r * (r - rs));
+    symbols[0][1][0] = symbols[0][0][1];
     symbols[1][0][0] = (rs * (r - rs)) / (2 * r ** 3);
 
     return symbols;
@@ -91,10 +92,9 @@ export class SpacetimeService {
    */
   static calculateTimeDilation(r: number, mass: number): number {
     const rs = this.schwarzschildRadius(mass);
-    const minRadius = rs * 1.1; // Stay outside event horizon
-    const effectiveRadius = Math.max(r, minRadius);
+    if (r <= rs) return 0;
 
-    return Math.sqrt(1 - rs / effectiveRadius);
+    return Math.sqrt(1 - rs / r);
   }
 
   /**

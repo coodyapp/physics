@@ -1,5 +1,6 @@
 import { Children, memo } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { CoodyLogo } from "@/components/coody-logo";
@@ -82,25 +83,29 @@ function Home() {
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.18),transparent_24%),linear-gradient(180deg,rgba(0,0,0,0.2),rgba(0,0,0,0.94)_82%)]" />
 
       <main className="relative z-10 flex min-h-[calc(100svh-88px)] flex-col items-center justify-center px-4 py-16 text-center sm:px-6">
-        <section className="home-appear home-appear-first mx-auto max-w-5xl">
+        <section className="home-appear home-appear-first mx-auto w-full max-w-none">
           <p className="text-xs font-medium uppercase tracking-[0.42em] text-white/50">Physics</p>
-          <h1 className="mx-auto mt-5 w-[min(94vw,70rem)]">
+          <h1 className="relative left-1/2 mx-0 mt-5 w-screen -translate-x-1/2">
             <WaveText names={SIMULATION_NAMES} />
           </h1>
         </section>
 
-        <Link
-          to={SIMULATIONS_HREF}
-          className="home-appear home-appear-second mt-10 inline-flex rounded-full bg-white px-6 py-3 text-sm font-medium uppercase tracking-[0.18em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-white/90"
-        >
-          Go to simulations
-        </Link>
-
-        <LogosCarousel className="home-appear home-appear-third mt-12 w-full max-w-6xl">
+        <LogosCarousel className="home-appear home-appear-second mt-8 w-full max-w-6xl">
           {PHYSICIST_NAMES.map((name) => (
             <span key={name}>{name}</span>
           ))}
         </LogosCarousel>
+
+        <Link
+          to={SIMULATIONS_HREF}
+          className="home-appear home-appear-third group relative mt-12 mb-14 inline-flex items-center gap-3 overflow-hidden rounded-full border border-white/15 bg-white/10 px-7 py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow-[0_18px_70px_rgba(90,170,255,0.24)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/35 hover:bg-white/15 hover:shadow-[0_24px_90px_rgba(120,190,255,0.34)] sm:mb-20"
+        >
+          <span className="absolute inset-0 bg-[linear-gradient(110deg,rgba(255,255,255,0.18),rgba(120,190,255,0.16),rgba(255,255,255,0.06))] opacity-80 transition-opacity duration-300 group-hover:opacity-100" />
+          <span className="relative">Go to simulations</span>
+          <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white text-black transition duration-300 group-hover:translate-x-0.5">
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </span>
+        </Link>
       </main>
 
       <footer className="home-appear home-appear-third relative z-10 flex justify-center px-4 pb-6">

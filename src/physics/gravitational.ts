@@ -16,18 +16,20 @@ export function calculateGravitationalWaveAmplitude(
 ): number {
   const distance = source.position.distanceTo(observerPosition);
   const { mass1, mass2, orbitalFrequency } = source;
+  const waveFrequency = 2 * orbitalFrequency;
 
   // Chirp mass: M_c = (m1 * m2)^(3/5) / (m1 + m2)^(1/5)
   const M = Math.pow((mass1 * mass2) ** 3 / (mass1 + mass2), 1 / 5);
 
   // Leading-order quadrupole strain amplitude for a circular binary:
-  //   h = (4 / r) * (G * M_c / c^2)^(5/3) * (pi * f)^(2/3) / c^2
-  //     = 4 * (G * M_c)^(5/3) * (pi * f)^(2/3) / (c^4 * r)
+  //   h = (4 / r) * (G * M_c / c^2)^(5/3) * (pi * f_gw)^(2/3) / c^2
+  //     = 4 * (G * M_c)^(5/3) * (pi * f_gw)^(2/3) / (c^4 * r)
+  // Dominant circular-binary gravitational waves oscillate at twice the orbital frequency.
   const amplitude =
-    (4 * Math.pow(PHYSICS_CONSTANTS.G * M, 5 / 3) * Math.pow(Math.PI * orbitalFrequency, 2 / 3)) /
+    (4 * Math.pow(PHYSICS_CONSTANTS.G * M, 5 / 3) * Math.pow(Math.PI * waveFrequency, 2 / 3)) /
     (PHYSICS_CONSTANTS.c ** 4 * distance);
 
-  return amplitude * Math.cos(2 * Math.PI * orbitalFrequency * time);
+  return amplitude * Math.cos(2 * Math.PI * waveFrequency * time);
 }
 
 export function calculateStrainTensor(

@@ -35,7 +35,12 @@ export default function WaveVisualization({ frequency, amplitude }: WaveVisualiz
       positions.setZ(i, z);
 
       // Color based on displacement
-      const colorIntensity = (z + amplitude) / (amplitude * 2);
+      const amplitudeScale = Math.max(Math.abs(amplitude), Number.EPSILON);
+      const colorIntensity = THREE.MathUtils.clamp(
+        (z + amplitudeScale) / (amplitudeScale * 2),
+        0,
+        1,
+      );
       colors[i * 3] = 0.2 + colorIntensity * 0.5; // R
       colors[i * 3 + 1] = 0.4 + colorIntensity * 0.3; // G
       colors[i * 3 + 2] = 0.8; // B
