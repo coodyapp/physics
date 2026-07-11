@@ -8,9 +8,10 @@ interface InformationProps {
   children: ReactNode;
   id?: string;
   open: boolean;
+  onClose: () => void;
 }
 
-export default function Information({ title, children, id, open }: InformationProps) {
+export default function Information({ title, children, id, open, onClose }: InformationProps) {
   return (
     <CollapsiblePanel
       side="left"
@@ -18,6 +19,7 @@ export default function Information({ title, children, id, open }: InformationPr
       icon={<Info className="h-4 w-4" />}
       id={id}
       open={open}
+      onClose={onClose}
       contentClassName="text-sm text-muted-foreground space-y-2"
     >
       {children}

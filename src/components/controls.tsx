@@ -8,9 +8,16 @@ interface ControlsProps {
   children: ReactNode;
   id?: string;
   open: boolean;
+  onClose: () => void;
 }
 
-export default function Controls({ title = "Controls", children, id, open }: ControlsProps) {
+export default function Controls({
+  title = "Controls",
+  children,
+  id,
+  open,
+  onClose,
+}: ControlsProps) {
   return (
     <CollapsiblePanel
       side="right"
@@ -18,6 +25,7 @@ export default function Controls({ title = "Controls", children, id, open }: Con
       icon={<Settings className="h-4 w-4" />}
       id={id}
       open={open}
+      onClose={onClose}
       showTitle={false}
     >
       {children}

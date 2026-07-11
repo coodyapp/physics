@@ -6,7 +6,7 @@ import { Button } from "@/ui/button";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
 import { Mesh, Vector3 } from "three";
-import { PHYSICS_CONSTANTS } from "@/utils/constants";
+import { PHYSICS_CONSTANTS, SIMULATION_COLORS } from "@/utils/constants";
 import { cn } from "@/utils/tailwind";
 
 /**
@@ -26,6 +26,17 @@ import { cn } from "@/utils/tailwind";
  */
 const SIM_G = 1;
 const SIM_C = 8;
+const FIXED_TIME_STEP = 1 / 120;
+const MAX_SUBSTEPS = 600;
+const MAX_BODIES = 12;
+const BODY_COLORS = [
+  SIMULATION_COLORS.positive,
+  SIMULATION_COLORS.negative,
+  SIMULATION_COLORS.active,
+  SIMULATION_COLORS.accent,
+] as const;
+const MAX_TRAIL_POINTS = 400;
+const TRAIL_SAMPLE_INTERVAL = 0.05;
 const SOLAR_MASS_KG = PHYSICS_CONSTANTS.M_sun;
 function simMass(kg: number): number {
   return kg / SOLAR_MASS_KG;
@@ -40,6 +51,7 @@ export function calculatePrecessionPerOrbit(
   semiMajorAxis: number,
   eccentricity: number,
 ): number {
+  validateOrbitParameters(centralMassKg, semiMajorAxis, eccentricity);
   const M = simMass(centralMassKg);
   return (
     (6 * Math.PI * SIM_G * M) / (SIM_C * SIM_C * semiMajorAxis * (1 - eccentricity * eccentricity))
@@ -55,6 +67,7 @@ export function calculateRealPrecessionPerOrbit(
   semiMajorAxisMeters: number,
   eccentricity: number,
 ): number {
+  validateOrbitParameters(centralMassKg, semiMajorAxisMeters, eccentricity);
   const { G, c } = PHYSICS_CONSTANTS;
   return (
     (6 * Math.PI * G * centralMassKg) /
@@ -70,8 +83,23 @@ export function calculateOrbitalVelocity(
   radius: number,
   semiMajorAxis: number,
 ): number {
+  if (![centralMassKg, radius, semiMajorAxis].every(Number.isFinite)) {
+    throw new Error("Orbit parameters must be finite");
+  }
+  if (centralMassKg <= 0 || radius <= 0 || semiMajorAxis <= 0 || radius >= 2 * semiMajorAxis) {
+    throw new Error("Mass and radii must define a bound orbit");
+  }
   const M = simMass(centralMassKg);
   return Math.sqrt(SIM_G * M * (2 / radius - 1 / semiMajorAxis));
+}
+
+function validateOrbitParameters(mass: number, semiMajorAxis: number, eccentricity: number): void {
+  if (![mass, semiMajorAxis, eccentricity].every(Number.isFinite)) {
+    throw new Error("Orbit parameters must be finite");
+  }
+  if (mass <= 0 || semiMajorAxis <= 0 || eccentricity < 0 || eccentricity >= 1) {
+    throw new Error("Orbit requires positive mass and axis, with 0 <= eccentricity < 1");
+  }
 }
 
 function calculateOrbitAcceleration(
@@ -113,31 +141,40 @@ export function advanceOrbitState(
   showRelativity: boolean,
   dt: number,
 ): OrbitState {
-  const acceleration = calculateOrbitAcceleration(
-    state.position,
-    state.velocity,
-    centralMassKg,
-    showRelativity,
-  );
-  const position = state.position
-    .clone()
-    .add(state.velocity.clone().multiplyScalar(dt))
-    .add(acceleration.clone().multiplyScalar(0.5 * dt * dt));
-  const predictedVelocity = state.velocity.clone().add(acceleration.clone().multiplyScalar(dt));
-  const nextAcceleration = calculateOrbitAcceleration(
-    position,
-    predictedVelocity,
-    centralMassKg,
-    showRelativity,
-  );
-  const velocity = state.velocity.clone().add(
-    acceleration
-      .clone()
-      .add(nextAcceleration)
-      .multiplyScalar(0.5 * dt),
-  );
+  if (!Number.isFinite(dt) || dt <= 0) throw new Error("Time step must be finite and positive");
+  validateOrbitParameters(centralMassKg, 1, 0);
 
-  return { position, velocity };
+  const derivative = (position: Vector3, velocity: Vector3) => ({
+    position: velocity,
+    velocity: calculateOrbitAcceleration(position, velocity, centralMassKg, showRelativity),
+  });
+  const offset = (base: Vector3, slope: Vector3, scale: number) =>
+    base.clone().addScaledVector(slope, scale);
+  const k1 = derivative(state.position, state.velocity);
+  const k2 = derivative(
+    offset(state.position, k1.position, dt / 2),
+    offset(state.velocity, k1.velocity, dt / 2),
+  );
+  const k3 = derivative(
+    offset(state.position, k2.position, dt / 2),
+    offset(state.velocity, k2.velocity, dt / 2),
+  );
+  const k4 = derivative(
+    offset(state.position, k3.position, dt),
+    offset(state.velocity, k3.velocity, dt),
+  );
+  const combine = (base: Vector3, a: Vector3, b: Vector3, c: Vector3, d: Vector3) =>
+    base
+      .clone()
+      .addScaledVector(a, dt / 6)
+      .addScaledVector(b, dt / 3)
+      .addScaledVector(c, dt / 3)
+      .addScaledVector(d, dt / 6);
+
+  return {
+    position: combine(state.position, k1.position, k2.position, k3.position, k4.position),
+    velocity: combine(state.velocity, k1.velocity, k2.velocity, k3.velocity, k4.velocity),
+  };
 }
 
 interface OrbitingBody {
@@ -151,6 +188,7 @@ interface OrbitingBody {
   eccentricity: number;
   lastR: number;
   perihelionCount: number;
+  trailElapsed: number;
 }
 
 function MercuryPrecessionScene({
@@ -159,20 +197,26 @@ function MercuryPrecessionScene({
   eccentricity,
   speedMultiplier,
   showRelativity,
+  addBodiesEnabled,
   resetKey,
-  onBodyClick,
+  onBodyCountChange,
 }: {
   starMass: number;
   planetMass: number;
   eccentricity: number;
   speedMultiplier: number;
   showRelativity: boolean;
+  addBodiesEnabled: boolean;
   resetKey: number;
-  onBodyClick: () => void;
+  onBodyCountChange: (count: number) => void;
 }) {
   const starRef = useRef<Mesh>(null);
+  const accumulatorRef = useRef(0);
+  const pointerDownRef = useRef<[number, number] | null>(null);
   const [bodies, setBodies] = useState<OrbitingBody[]>([]);
   const { camera, raycaster, mouse } = useThree();
+
+  useEffect(() => onBodyCountChange(bodies.length), [bodies.length, onBodyCountChange]);
 
   // Initialize planet orbit
   useEffect(() => {
@@ -185,20 +229,38 @@ function MercuryPrecessionScene({
       position: new Vector3(r0, 0, 0),
       velocity: new Vector3(0, v0, 0),
       mass: planetMass,
-      color: "#3b82f6",
+      color: SIMULATION_COLORS.positive,
       trail: [],
       semiMajorAxis: a,
       eccentricity: eccentricity,
       lastR: r0,
       perihelionCount: 0,
+      trailElapsed: 0,
     };
 
+    accumulatorRef.current = 0;
     setBodies([initialBody]);
   }, [starMass, planetMass, eccentricity, resetKey]);
 
-  // Handle mouse clicks to add random bodies
+  // Add bodies on stationary pointer releases, not after camera drags.
   useEffect(() => {
-    const handleClick = (event: MouseEvent) => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if ((event.target as HTMLElement).tagName?.toLowerCase() === "canvas") {
+        pointerDownRef.current = [event.clientX, event.clientY];
+      }
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const pointerDown = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (
+        !addBodiesEnabled ||
+        !pointerDown ||
+        Math.hypot(event.clientX - pointerDown[0], event.clientY - pointerDown[1]) > 5
+      ) {
+        return;
+      }
+
       const target = event.target as HTMLElement;
       if (!target.tagName || target.tagName.toLowerCase() !== "canvas") return;
 
@@ -224,9 +286,9 @@ function MercuryPrecessionScene({
 
           const angle = Math.atan2(intersect.y, intersect.x);
 
-          // Random orbital parameters
-          const randomA = r * (1 + Math.random() * 0.3);
+          // Treat clicked point as perihelion so generated state and eccentricity agree.
           const randomE = Math.min(0.7, Math.random() * 0.5);
+          const randomA = r / (1 - randomE);
           const v = calculateOrbitalVelocity(starMass, r, randomA);
 
           const newBody: OrbitingBody = {
@@ -234,48 +296,70 @@ function MercuryPrecessionScene({
             position: new Vector3(intersect.x, intersect.y, 0),
             velocity: new Vector3(-v * Math.sin(angle), v * Math.cos(angle), 0),
             mass: planetMass * (0.5 + Math.random()),
-            color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+            color: BODY_COLORS[bodies.length % BODY_COLORS.length],
             trail: [],
             semiMajorAxis: randomA,
             eccentricity: randomE,
             lastR: r,
             perihelionCount: 0,
+            trailElapsed: 0,
           };
 
-          setBodies((prev) => [...prev, newBody]);
-          onBodyClick();
+          setBodies((prev) => {
+            if (prev.length >= MAX_BODIES) return prev;
+            return [...prev, newBody];
+          });
         }
       }
     };
 
-    window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
-  }, [camera, raycaster, mouse, starMass, planetMass, onBodyClick]);
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [addBodiesEnabled, camera, raycaster, mouse, starMass, planetMass]);
 
-  // Physics integration (velocity Verlet) in simulation units.
+  // Fixed-step RK4 keeps simulation independent of render cadence.
   useFrame((_, delta) => {
-    const dt = Math.min(delta * speedMultiplier * 0.4, 0.5); // Cap dt to keep the integrator stable
+    accumulatorRef.current += Math.min(delta, 0.25) * speedMultiplier;
+    const substeps = Math.min(Math.floor(accumulatorRef.current / FIXED_TIME_STEP), MAX_SUBSTEPS);
+    if (substeps === 0) return;
+    accumulatorRef.current -= substeps * FIXED_TIME_STEP;
 
     setBodies((prevBodies) =>
-      prevBodies.map((body) => {
-        const r = body.position.length();
-        if (r < 0.5) return body; // Prevent collision with star
+      prevBodies.flatMap((body) => {
+        let newPosition = body.position;
+        let newVelocity = body.velocity;
+        let collided = false;
+        let trailElapsed = body.trailElapsed;
+        const newTrail = body.trail.slice();
 
-        const { position: newPosition, velocity: newVelocity } = advanceOrbitState(
-          body,
-          starMass,
-          showRelativity,
-          dt,
-        );
-
-        // Update trail
-        const newTrail: [number, number, number][] = [
-          ...body.trail,
-          [newPosition.x, newPosition.y, newPosition.z],
-        ];
-        if (newTrail.length > 800) newTrail.shift();
+        for (let step = 0; step < substeps; step++) {
+          const next = advanceOrbitState(
+            { position: newPosition, velocity: newVelocity },
+            starMass,
+            showRelativity,
+            FIXED_TIME_STEP,
+          );
+          newPosition = next.position;
+          newVelocity = next.velocity;
+          trailElapsed += FIXED_TIME_STEP;
+          if (trailElapsed >= TRAIL_SAMPLE_INTERVAL) {
+            trailElapsed %= TRAIL_SAMPLE_INTERVAL;
+            newTrail.push([newPosition.x, newPosition.y, newPosition.z]);
+            if (newTrail.length > MAX_TRAIL_POINTS) newTrail.shift();
+          }
+          if (newPosition.length() < 0.8) {
+            collided = true;
+            break;
+          }
+        }
+        if (collided) return [];
 
         // Track perihelion passages
+        const r = body.position.length();
         const newR = newPosition.length();
         let newPerihelionCount = body.perihelionCount;
 
@@ -284,14 +368,17 @@ function MercuryPrecessionScene({
           newPerihelionCount++;
         }
 
-        return {
-          ...body,
-          position: newPosition,
-          velocity: newVelocity,
-          trail: newTrail,
-          lastR: r,
-          perihelionCount: newPerihelionCount,
-        };
+        return [
+          {
+            ...body,
+            position: newPosition,
+            velocity: newVelocity,
+            trail: newTrail,
+            lastR: r,
+            perihelionCount: newPerihelionCount,
+            trailElapsed,
+          },
+        ];
       }),
     );
   });
@@ -301,11 +388,21 @@ function MercuryPrecessionScene({
       {/* Star at center */}
       <mesh ref={starRef} position={[0, 0, 0]}>
         <sphereGeometry args={[0.8, 32, 32]} />
-        <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={1.5} />
+        <meshStandardMaterial
+          color={SIMULATION_COLORS.source}
+          emissive={SIMULATION_COLORS.source}
+          emissiveIntensity={1.5}
+        />
       </mesh>
 
       {/* Star glow */}
-      <pointLight position={[0, 0, 0]} intensity={3} color="#fbbf24" distance={40} decay={2} />
+      <pointLight
+        position={[0, 0, 0]}
+        intensity={3}
+        color={SIMULATION_COLORS.source}
+        distance={40}
+        decay={2}
+      />
 
       {/* Orbiting bodies */}
       {bodies.map((body) => {
@@ -349,12 +446,9 @@ function MercuryPrecessionSimulation() {
   const [eccentricity, setEccentricity] = useState(0.206); // Mercury eccentricity
   const [speedMultiplier, setSpeedMultiplier] = useState(50);
   const [showRelativity, setShowRelativity] = useState(true);
+  const [addBodiesEnabled, setAddBodiesEnabled] = useState(false);
   const [bodyCount, setBodyCount] = useState(1);
   const [resetKey, setResetKey] = useState(0);
-
-  const handleBodyClick = () => {
-    setBodyCount((prev) => prev + 1);
-  };
 
   const handleReset = () => {
     setBodyCount(1);
@@ -363,6 +457,7 @@ function MercuryPrecessionSimulation() {
     setEccentricity(0.206);
     setSpeedMultiplier(50);
     setShowRelativity(true);
+    setAddBodiesEnabled(false);
     setResetKey((value) => value + 1);
   };
 
@@ -372,7 +467,7 @@ function MercuryPrecessionSimulation() {
         label="Star Mass"
         value={starMass / PHYSICS_CONSTANTS.M_sun}
         min={0.5}
-        max={5}
+        max={3}
         step={0.1}
         onChange={(value) => {
           setStarMass(value * PHYSICS_CONSTANTS.M_sun);
@@ -398,7 +493,7 @@ function MercuryPrecessionSimulation() {
         label="Eccentricity"
         value={eccentricity}
         min={0}
-        max={0.9}
+        max={0.7}
         step={0.01}
         onChange={(value) => {
           setEccentricity(value);
@@ -435,6 +530,18 @@ function MercuryPrecessionSimulation() {
 
       <Button
         variant="ghost"
+        className={cn(
+          "w-full rounded-full border border-border/55 bg-background/45 backdrop-blur-xl hover:bg-background/75",
+          addBodiesEnabled && "border-primary/60 bg-primary/15",
+        )}
+        aria-pressed={addBodiesEnabled}
+        onClick={() => setAddBodiesEnabled((enabled) => !enabled)}
+      >
+        {addBodiesEnabled ? "Finish Adding Bodies" : "Add Orbiting Bodies"}
+      </Button>
+
+      <Button
+        variant="ghost"
         className="w-full rounded-full border border-border/55 bg-background/45 backdrop-blur-xl hover:bg-background/75"
         onClick={handleReset}
       >
@@ -442,8 +549,14 @@ function MercuryPrecessionSimulation() {
       </Button>
 
       <div className="text-xs text-muted-foreground pt-2 border-t border-border/40">
-        <p>💡 Click on canvas to add orbiting bodies</p>
-        <p className="mt-1">Bodies: {bodyCount}</p>
+        <p>
+          {addBodiesEnabled
+            ? "Click canvas to place a body in the locked orbital plane."
+            : "Enable Add Orbiting Bodies, then click canvas."}
+        </p>
+        <p className="mt-1">
+          Bodies: {bodyCount}/{MAX_BODIES}
+        </p>
       </div>
     </div>
   );
@@ -455,6 +568,8 @@ function MercuryPrecessionSimulation() {
     // Simulation precession in sim units -> degrees per orbit (intuitive for the demo).
     const simPrecessionPerOrbit = calculatePrecessionPerOrbit(starMass, a, eccentricity);
     const simDegPerOrbit = (simPrecessionPerOrbit * 180) / Math.PI;
+    const perihelion = a * (1 - eccentricity);
+    const perihelionSpeed = calculateOrbitalVelocity(starMass, perihelion, a);
 
     // Real Mercury reference: Δω ≈ 43 arcsec/century (uses SI units & the real Sun).
     const mercuryA = 5.791e10; // meters
@@ -482,6 +597,13 @@ function MercuryPrecessionSimulation() {
           <strong>Simulation Precession:</strong>
           <p className="text-muted-foreground">
             {showRelativity ? `${simDegPerOrbit.toFixed(2)}°/orbit` : "Disabled (Classical)"}
+          </p>
+        </div>
+
+        <div>
+          <strong>Weak-field check:</strong>
+          <p className="text-muted-foreground">
+            v/c at perihelion: {(perihelionSpeed / SIM_C).toFixed(3)}
           </p>
         </div>
 
@@ -522,8 +644,9 @@ function MercuryPrecessionSimulation() {
         eccentricity={eccentricity}
         speedMultiplier={speedMultiplier}
         showRelativity={showRelativity}
+        addBodiesEnabled={addBodiesEnabled}
         resetKey={resetKey}
-        onBodyClick={handleBodyClick}
+        onBodyCountChange={setBodyCount}
       />
     </FloatingSimulationLayout>
   );

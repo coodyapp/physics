@@ -1,7 +1,8 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, OrthographicCamera, PerspectiveCamera } from "@react-three/drei";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
+import { useSimulationMotion } from "@/hooks/use-simulation-motion";
 
 export type CameraViewMode = "3d" | "2d";
 export type CameraViewDirection = "isometric" | "xy" | "xz" | "yz";
@@ -16,6 +17,9 @@ interface RendererProps {
   cameraMode?: CameraViewMode;
   cameraDirection?: CameraViewDirection;
   cameraZoom?: number;
+  name?: string;
+  description?: string;
+  resetKey?: number;
 }
 
 function cameraDistance(
@@ -85,7 +89,20 @@ function CameraPose({
       camera.zoom = zoom;
       camera.updateProjectionMatrix();
     }
-  }, [camera, fov, position, target, up, zoom]);
+  }, [
+    camera,
+    fov,
+    position[0],
+    position[1],
+    position[2],
+    target[0],
+    target[1],
+    target[2],
+    up[0],
+    up[1],
+    up[2],
+    zoom,
+  ]);
 
   return null;
 }
@@ -100,15 +117,45 @@ export default function Renderer({
   cameraMode = "3d",
   cameraDirection = "isometric",
   cameraZoom = 28,
+  name = "Interactive physics simulation",
+  description = "Three-dimensional visualization with adjustable camera and simulation controls.",
+  resetKey = 0,
 }: RendererProps) {
+  const { isPlaying } = useSimulationMotion();
+  const [isVisible, setIsVisible] = useState(!document.hidden);
   const distance = cameraDistance(cameraPosition, cameraTarget);
-  const resolvedCameraPosition = getCameraPosition(cameraDirection, distance, cameraTarget);
-  const cameraUp = getCameraUp(cameraDirection);
-  const gridRotation = getGridRotation(cameraDirection);
+  const resolvedCameraPosition = useMemo(
+    () => getCameraPosition(cameraDirection, distance, cameraTarget),
+    [cameraDirection, distance, cameraTarget[0], cameraTarget[1], cameraTarget[2]],
+  );
+  const cameraUp = useMemo(() => getCameraUp(cameraDirection), [cameraDirection]);
+  const gridRotation = useMemo(() => getGridRotation(cameraDirection), [cameraDirection]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => setIsVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   return (
-    <div className="absolute inset-0 w-full h-full">
-      <Canvas>
+    <div
+      className="absolute inset-0 h-full w-full"
+      role="img"
+      aria-label={name}
+      aria-describedby="simulation-canvas-description simulation-canvas-instructions"
+    >
+      <p id="simulation-canvas-description" className="sr-only">
+        {description}
+      </p>
+      <p id="simulation-canvas-instructions" className="sr-only">
+        Drag to orbit or pan, scroll to zoom, and press R to reset camera. Use toolbar controls to
+        change camera view, grid, axes, and animation.
+      </p>
+      <Canvas
+        aria-hidden="true"
+        dpr={[1, 1.5]}
+        frameloop={isPlaying && isVisible ? "always" : "demand"}
+      >
         <PerspectiveCamera
           makeDefault={cameraMode === "3d"}
           position={resolvedCameraPosition}
@@ -124,6 +171,7 @@ export default function Renderer({
           far={1000}
         />
         <CameraPose
+          key={resetKey}
           position={resolvedCameraPosition}
           target={cameraTarget}
           up={cameraUp}
@@ -159,6 +207,7 @@ export default function Renderer({
         {children}
 
         <OrbitControls
+          key={`controls-${resetKey}`}
           makeDefault
           target={cameraTarget}
           enableRotate={cameraMode === "3d"}

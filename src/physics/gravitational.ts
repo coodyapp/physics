@@ -9,24 +9,47 @@ export interface WaveSource {
   orbitalFrequency: number;
 }
 
+function requireFinite(value: number, name: string): void {
+  if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
+}
+
+function requirePositive(value: number, name: string): void {
+  requireFinite(value, name);
+  if (value <= 0) throw new Error(`${name} must be positive`);
+}
+
+function requireFiniteVector(value: Vector3, name: string): void {
+  if (![value.x, value.y, value.z].every(Number.isFinite)) {
+    throw new Error(`${name} must contain finite coordinates`);
+  }
+}
+
 export function calculateGravitationalWaveAmplitude(
   source: WaveSource,
   observerPosition: Vector3,
   time: number,
 ): number {
+  requireFiniteVector(source.position, "Source position");
+  requireFiniteVector(observerPosition, "Observer position");
+  requirePositive(source.mass1, "Mass 1");
+  requirePositive(source.mass2, "Mass 2");
+  requirePositive(source.orbitalRadius, "Orbital radius");
+  requireFinite(source.orbitalFrequency, "Orbital frequency");
+  if (source.orbitalFrequency < 0) throw new Error("Orbital frequency must be non-negative");
+  requireFinite(time, "Time");
+
   const distance = source.position.distanceTo(observerPosition);
-  const { mass1, mass2, orbitalFrequency } = source;
+  if (distance === 0) throw new Error("Observer distance must be positive");
+  const { mass1, mass2, orbitalRadius, orbitalFrequency } = source;
   const waveFrequency = 2 * orbitalFrequency;
 
-  // Chirp mass: M_c = (m1 * m2)^(3/5) / (m1 + m2)^(1/5)
-  const M = Math.pow((mass1 * mass2) ** 3 / (mass1 + mass2), 1 / 5);
-
-  // Leading-order quadrupole strain amplitude for a circular binary:
-  //   h = (4 / r) * (G * M_c / c^2)^(5/3) * (pi * f_gw)^(2/3) / c^2
-  //     = 4 * (G * M_c)^(5/3) * (pi * f_gw)^(2/3) / (c^4 * r)
-  // Dominant circular-binary gravitational waves oscillate at twice the orbital frequency.
+  const larger = Math.max(mass1, mass2);
+  const ratio = Math.min(mass1, mass2) / larger;
+  const reducedMass = (larger * ratio) / (1 + ratio);
+  const angularFrequency = 2 * Math.PI * orbitalFrequency;
+  // Leading quadrupole strain. orbitalRadius means body-to-body separation.
   const amplitude =
-    (4 * Math.pow(PHYSICS_CONSTANTS.G * M, 5 / 3) * Math.pow(Math.PI * waveFrequency, 2 / 3)) /
+    (4 * PHYSICS_CONSTANTS.G * reducedMass * orbitalRadius ** 2 * angularFrequency ** 2) /
     (PHYSICS_CONSTANTS.c ** 4 * distance);
 
   return amplitude * Math.cos(2 * Math.PI * waveFrequency * time);
@@ -36,6 +59,7 @@ export function calculateStrainTensor(
   amplitude: number,
   polarization: "plus" | "cross",
 ): number[][] {
+  requireFinite(amplitude, "Amplitude");
   const h = amplitude;
 
   if (polarization === "plus") {

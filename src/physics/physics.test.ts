@@ -7,7 +7,9 @@ import {
   schwarzschildRadius,
   escapeVelocity,
   calculateBinarySystem,
+  calculateBinaryPotentialProxy,
   calculateSpacetimeCurvatureSimple,
+  calculatePotentialWellProxy,
   type CelestialBody,
 } from "@/physics/gravity";
 import {
@@ -70,6 +72,14 @@ describe("gravity — Newtonian gravity", () => {
     expect(a.x).toBeCloseTo(2, 10);
   });
 
+  it("rejects invalid masses, radii, and non-finite coordinates", () => {
+    expect(() =>
+      calculateGravitationalAcceleration(body([0, 0, 0], 0), new Vector3(1, 0, 0)),
+    ).toThrow();
+    expect(() => escapeVelocity(1, 0)).toThrow();
+    expect(() => calculateGravitationalForce(body([NaN, 0, 0], 1), body([1, 0, 0], 1))).toThrow();
+  });
+
   it("schwarzschildRadius matches the Sun (~2954 m)", () => {
     const rs = schwarzschildRadius(M_sun);
     expect(rs).toBeCloseTo(2954, -2);
@@ -108,6 +118,21 @@ describe("gravity — visualization helpers", () => {
     expect(calculateAngularPhase(0.25, 1)).toBeCloseTo(Math.PI / 2, 10);
   });
 
+  it("rejects invalid binary-orbit inputs", () => {
+    expect(() => calculateAngularPhase(NaN, 1)).toThrow();
+    expect(() => calculateAngularPhase(0, -1)).toThrow();
+    expect(() => calculateBarycentricRadii(0, 1, 1)).toThrow();
+    expect(() => calculateBarycentricRadii(1, 1, Infinity)).toThrow();
+    expect(() => calculateBarycentricPositions(1, 1, 1, Infinity)).toThrow();
+  });
+
+  it("keeps compatibility aliases for visualization proxies", () => {
+    expect(calculateBinarySystem(1, 2, 3, 4, 5, 0)).toBe(
+      calculateBinaryPotentialProxy(1, 2, 3, 4, 5, 0),
+    );
+    expect(calculateSpacetimeCurvatureSimple(1, 2, 3)).toBe(calculatePotentialWellProxy(1, 2, 3));
+  });
+
   it("calculateSpacetimeCurvatureSimple falls off with distance and is negative", () => {
     const near = calculateSpacetimeCurvatureSimple(1, 0, 1);
     const far = calculateSpacetimeCurvatureSimple(10, 0, 1);
@@ -125,25 +150,23 @@ describe("gravitational — gravitational waves", () => {
     orbitalFrequency: 100,
   };
 
-  it("uses the correct chirp mass M_c = (m1 m2)^(3/5) / (m1+m2)^(1/5)", () => {
-    // Equal masses: M_c = m / 2^(1/5).
-    const m = 1.4 * M_sun;
-    const expected = m / Math.pow(2, 1 / 5);
-    // Reconstruct chirp mass from the amplitude ratio at unit distance & frequency.
-    // h = 4 (G M_c)^(5/3) (pi f_gw)^(2/3) / (c^4 r)  =>  M_c = (h c^4 r / (4 (pi f_gw)^(2/3)))^(3/5) / G
+  it("uses the circular-binary quadrupole formula", () => {
     const r = 1e20;
     const orbitalFrequency = 100;
-    const waveFrequency = 2 * orbitalFrequency;
     const h0 = calculateGravitationalWaveAmplitude(
       { ...baseSource, orbitalFrequency },
       new Vector3(r, 0, 0),
       0,
     );
-    const amp = Math.abs(h0); // cos(0) = 1
-    const mc =
-      Math.pow((amp * c ** 4 * r) / (4 * Math.pow(Math.PI * waveFrequency, 2 / 3)), 3 / 5) / G;
-    // Relative check (values are ~1e30, so absolute toBeCloseTo is not meaningful).
-    expect(mc / expected).toBeCloseTo(1, 10);
+    const reducedMass = baseSource.mass1 / 2;
+    const expected =
+      (4 *
+        G *
+        reducedMass *
+        baseSource.orbitalRadius ** 2 *
+        (2 * Math.PI * orbitalFrequency) ** 2) /
+      (c ** 4 * r);
+    expect(h0 / expected).toBeCloseTo(1, 10);
   });
 
   it("amplitude scales as 1 / distance", () => {
@@ -174,9 +197,45 @@ describe("gravitational — gravitational waves", () => {
     expect(cross[0][1]).toBe(1);
     expect(cross[1][0]).toBe(1);
   });
+
+  it("rejects coincident observers and invalid source parameters", () => {
+    expect(() => calculateGravitationalWaveAmplitude(baseSource, baseSource.position, 0)).toThrow();
+    expect(() =>
+      calculateGravitationalWaveAmplitude(
+        { ...baseSource, mass1: Infinity },
+        new Vector3(1, 0, 0),
+        0,
+      ),
+    ).toThrow();
+    expect(() => calculateStrainTensor(NaN, "plus")).toThrow();
+    expect(() =>
+      calculateGravitationalWaveAmplitude(
+        { ...baseSource, orbitalRadius: 0 },
+        new Vector3(1, 0, 0),
+        0,
+      ),
+    ).toThrow();
+  });
+
+  it("uses binary separation in the quadrupole amplitude", () => {
+    const observer = new Vector3(1e20, 0, 0);
+    const first = calculateGravitationalWaveAmplitude(baseSource, observer, 0);
+    const doubled = calculateGravitationalWaveAmplitude(
+      { ...baseSource, orbitalRadius: baseSource.orbitalRadius * 2 },
+      observer,
+      0,
+    );
+    expect(doubled / first).toBeCloseTo(4, 8);
+  });
 });
 
 describe("GravitationalWavesService", () => {
+  it("rejects singular and non-finite inputs", () => {
+    expect(() => GravitationalWavesService.calculateWaveAmplitude(1, 1, 0, 1)).toThrow();
+    expect(() => GravitationalWavesService.calculateFrequency(1, 1, Infinity)).toThrow();
+    expect(() => GravitationalWavesService.calculateFrequency(1, 1, 0)).toThrow();
+  });
+
   it("calculateFrequency follows Kepler's third law f = sqrt(GM/a^3) / (2 pi)", () => {
     const f = GravitationalWavesService.calculateFrequency(M_sun, M_sun, 1e9);
     const expected = Math.sqrt((G * (2 * M_sun)) / 1e9 ** 3) / (2 * Math.PI);
@@ -209,9 +268,27 @@ describe("GravitationalWavesService", () => {
     // M_c scales linearly with mass for fixed mass ratio, so ratio = 2^(5/3).
     expect(aDouble / aSingle).toBeCloseTo(Math.pow(2, 5 / 3), 6);
   });
+
+  it("avoids intermediate overflow for extreme finite masses", () => {
+    const amplitude = GravitationalWavesService.calculateWaveAmplitude(1e200, 2e200, 1e250, 1e-100);
+    const frequency = GravitationalWavesService.calculateFrequency(1e300, 1e300, 1e150);
+    expect(amplitude).toBeGreaterThan(0);
+    expect(amplitude).toBeLessThan(Infinity);
+    expect(frequency).toBeGreaterThan(0);
+    expect(frequency).toBeLessThan(Infinity);
+  });
 });
 
 describe("PhysicsService", () => {
+  it("rejects singular and invalid public API inputs", () => {
+    expect(() => PhysicsService.calculateGravitationalForce(1, 1, 0)).toThrow();
+    expect(() => PhysicsService.calculateOrbitalVelocity(1, 0)).toThrow();
+    expect(() =>
+      PhysicsService.calculateSpacetimeCurvature(1, new Vector3(), new Vector3()),
+    ).toThrow();
+    expect(() => PhysicsService.schwarzschildRadius(NaN)).toThrow();
+  });
+
   it("computes Newtonian force, orbital & escape velocities, Schwarzschild radius", () => {
     expect(PhysicsService.calculateGravitationalForce(1, 1, 1)).toBeCloseTo(G, 10);
     expect(PhysicsService.calculateOrbitalVelocity(M_sun, 1e9)).toBeCloseTo(
@@ -283,10 +360,28 @@ describe("SpacetimeService", () => {
     expect(symbols[0][1][0]).toBeCloseTo(symbols[0][0][1], 10);
   });
 
-  it("Ricci scalar scales as M / r^3", () => {
-    const near = SpacetimeService.calculateRicciScalar(1, 0, 1);
-    const far = SpacetimeService.calculateRicciScalar(2, 0, 1);
+  it("names the intentionally partial Christoffel API explicitly", () => {
+    const position = new Vector3(1e6, 2e6, 3e6);
+    const partial = SpacetimeService.calculatePartialChristoffelSymbols(position, 1);
+    expect(SpacetimeService.calculateChristoffelSymbols(position, 1)).toEqual(partial);
+    expect(partial.flat(2).filter((value) => value !== 0)).toHaveLength(3);
+  });
+
+  it("curvature proxy scales as M / r^3", () => {
+    const near = SpacetimeService.calculateCurvatureProxy(1, 0, 1);
+    const far = SpacetimeService.calculateCurvatureProxy(2, 0, 1);
     expect(near / far).toBeCloseTo(8, 6); // 1/r^3 -> 2x distance = 1/8
+    expect(SpacetimeService.calculateRicciScalar(1, 0, 1)).toBe(near);
+  });
+
+  it("rejects singular and non-finite spacetime inputs", () => {
+    const rs = SpacetimeService.schwarzschildRadius(M_sun);
+    expect(() =>
+      SpacetimeService.calculateChristoffelSymbols(new Vector3(rs, 0, 0), M_sun),
+    ).toThrow();
+    expect(() => SpacetimeService.calculateSpacetimeCurvature(new Vector3(), M_sun)).toThrow();
+    expect(() => SpacetimeService.calculateTimeDilation(NaN, M_sun)).toThrow();
+    expect(() => GravitationalWaveService.calculateWaveDistortion(0, 0, 0, 1, Infinity)).toThrow();
   });
 
   it("wave distortion is zero for zero amplitude and oscillates otherwise", () => {
@@ -317,7 +412,19 @@ describe("Boltzmann sampling helpers", () => {
     expect(highTemperatureUphill).toBeLessThanOrEqual(1);
   });
 
+  it("handles exact zero-energy density without epsilon bias", () => {
+    expect(calculateBoltzmannAcceptance(0, 0, 1)).toBe(1);
+    expect(calculateBoltzmannAcceptance(0, 1, 1)).toBe(1);
+    expect(calculateBoltzmannAcceptance(1, 0, 1)).toBe(0);
+  });
+
   it("rejects non-positive temperatures", () => {
     expect(() => calculateBoltzmannAcceptance(1, 1, 0)).toThrow();
+  });
+
+  it("rejects invalid energies and non-finite values", () => {
+    expect(() => calculateBoltzmannAcceptance(-1, 1, 1)).toThrow();
+    expect(() => calculateBoltzmannAcceptance(1, Infinity, 1)).toThrow();
+    expect(() => calculateBoltzmannAcceptance(1, 1, NaN)).toThrow();
   });
 });

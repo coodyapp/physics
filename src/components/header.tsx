@@ -2,16 +2,16 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/ui/button";
 import {
   Axis3d,
-  Box,
   ChevronLeft,
   ChevronRight,
   Grid3x3,
   Home,
   Info,
   Moon,
-  Orbit,
+  Pause,
+  Play,
+  RotateCcw,
   Settings,
-  Square,
   Sun,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme-provider";
@@ -23,6 +23,7 @@ import {
   LAB_SIMULATIONS,
 } from "@/simulations/physics-labs-data";
 import { cn } from "@/utils/tailwind";
+import { useSimulationMotion } from "@/hooks/use-simulation-motion";
 
 const STANDALONE_SIMULATIONS = [
   { title: "Mass Effect", href: "/simulations/mass-effect" },
@@ -48,7 +49,7 @@ const VIEW_DIRECTIONS: { value: CameraViewDirection; label: string }[] = [
 ];
 
 const chromeButtonClassName =
-  "relative size-10 rounded-full border border-border/55 bg-background/45 text-foreground shadow-lg backdrop-blur-xl hover:bg-background/75 hover:text-foreground focus-visible:ring-ring/70 disabled:bg-background/30 dark:bg-background/35 dark:hover:bg-background/60";
+  "relative rounded-full border border-border/55 bg-background/45 text-foreground shadow-lg backdrop-blur-xl hover:bg-background/75 hover:text-foreground focus-visible:ring-ring/70 disabled:bg-background/30 dark:bg-background/35 dark:hover:bg-background/60";
 
 const activeChromeButtonClassName =
   "border-primary/60 bg-primary/80 text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground";
@@ -68,17 +69,7 @@ interface HeaderProps {
   onCameraDirectionChange: (value: CameraViewDirection) => void;
   onInformationToggle: (value: boolean) => void;
   onControlsToggle: (value: boolean) => void;
-}
-
-function getViewDirectionLabel(direction: CameraViewDirection) {
-  return VIEW_DIRECTIONS.find((option) => option.value === direction)?.label ?? direction;
-}
-
-function getNextViewDirection(direction: CameraViewDirection) {
-  const currentIndex = VIEW_DIRECTIONS.findIndex((option) => option.value === direction);
-  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % VIEW_DIRECTIONS.length : 0;
-
-  return VIEW_DIRECTIONS[nextIndex].value;
+  onCameraReset: () => void;
 }
 
 export default function Header({
@@ -96,8 +87,11 @@ export default function Header({
   onCameraDirectionChange,
   onInformationToggle,
   onControlsToggle,
+  onCameraReset,
 }: HeaderProps) {
+  const { isPlaying, prefersReducedMotion, toggle: toggleMotion } = useSimulationMotion();
   const { theme, setTheme } = useTheme();
+  const nextTheme = theme === "light" ? "dark" : "light";
   const location = useLocation();
   const navigate = useNavigate();
   const currentSimulationIndex = SIMULATION_LINKS.findIndex(
@@ -112,38 +106,38 @@ export default function Header({
   const nextSimulation = currentSimulationFound
     ? SIMULATION_LINKS[(currentSimulationIndex + 1) % SIMULATION_LINKS.length]
     : undefined;
-  const nextCameraMode: CameraViewMode = cameraMode === "3d" ? "2d" : "3d";
-  const nextCameraDirection = getNextViewDirection(cameraDirection);
-  const viewDirectionLabel = getViewDirectionLabel(cameraDirection);
-  const nextViewDirectionLabel = getViewDirectionLabel(nextCameraDirection);
-
   return (
     <header
       aria-label="Simulation controls and navigation"
       className="max-w-[calc(100vw-2rem)] rounded-[1.75rem] border border-border/55 bg-background/45 shadow-2xl backdrop-blur-2xl"
     >
-      <div className="flex items-center gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none] sm:gap-2 sm:px-3 [&::-webkit-scrollbar]:hidden">
+      <div
+        className="flex items-center gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:thin] sm:gap-2 sm:px-3"
+        role="toolbar"
+        aria-label="Scrollable simulation toolbar"
+        tabIndex={0}
+      >
         <Button
           asChild
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={chromeButtonClassName}
           aria-label="Home"
           title="Home"
         >
           <Link to="/">
-            <Home className="h-4 w-4" />
+            <Home />
             <span className="sr-only">Home</span>
           </Link>
         </Button>
 
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={chromeButtonClassName}
-          aria-label="Toggle theme"
-          title="Toggle theme"
-          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          aria-label={`Switch to ${nextTheme} theme`}
+          title={`Switch to ${nextTheme} theme`}
+          onClick={() => setTheme(nextTheme)}
         >
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -155,7 +149,7 @@ export default function Header({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={cn(chromeButtonClassName, isInformationOpen && activeChromeButtonClassName)}
           aria-label="Information panel"
           aria-controls={informationPanelId}
@@ -164,13 +158,13 @@ export default function Header({
           title={isInformationOpen ? "Hide information" : "Show information"}
           onClick={() => onInformationToggle(!isInformationOpen)}
         >
-          <Info className="h-4 w-4" />
+          <Info />
         </Button>
 
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={cn(chromeButtonClassName, isControlsOpen && activeChromeButtonClassName)}
           aria-label="Settings panel"
           aria-controls={controlsPanelId}
@@ -179,59 +173,85 @@ export default function Header({
           title={isControlsOpen ? "Hide settings" : "Show settings"}
           onClick={() => onControlsToggle(!isControlsOpen)}
         >
-          <Settings className="h-4 w-4" />
+          <Settings />
         </Button>
 
         <div aria-hidden="true" className="h-6 w-px shrink-0 bg-border/50" />
 
+        <select
+          aria-label="Camera projection"
+          title="Camera projection"
+          value={cameraMode}
+          onChange={(event) => onCameraModeChange(event.target.value as CameraViewMode)}
+          className="h-10 shrink-0 rounded-full border border-border/55 bg-background/45 px-2 text-xs shadow-lg backdrop-blur-xl focus-visible:ring-2"
+        >
+          <option value="3d">3D</option>
+          <option value="2d">2D</option>
+        </select>
+
+        <select
+          aria-label="Camera direction"
+          title="Camera direction"
+          value={cameraDirection}
+          onChange={(event) => onCameraDirectionChange(event.target.value as CameraViewDirection)}
+          className="h-10 w-24 shrink-0 rounded-full border border-border/55 bg-background/45 px-2 text-xs shadow-lg backdrop-blur-xl focus-visible:ring-2"
+        >
+          {VIEW_DIRECTIONS.map((direction) => (
+            <option key={direction.value} value={direction.value}>
+              {direction.label}
+            </option>
+          ))}
+        </select>
+
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={chromeButtonClassName}
-          aria-label={`Camera mode: ${cameraMode.toUpperCase()}. Switch to ${nextCameraMode.toUpperCase()}`}
-          title={`Camera mode: ${cameraMode.toUpperCase()}`}
-          onClick={() => onCameraModeChange(nextCameraMode)}
+          aria-label="Reset camera"
+          title="Reset camera (R)"
+          onClick={onCameraReset}
         >
-          {cameraMode === "3d" ? <Box className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+          <RotateCcw />
         </Button>
 
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className={chromeButtonClassName}
-          aria-label={`View direction: ${viewDirectionLabel}. Switch to ${nextViewDirectionLabel}`}
-          title={`View direction: ${viewDirectionLabel}`}
-          onClick={() => onCameraDirectionChange(nextCameraDirection)}
+          size="icon-lg"
+          className={cn(chromeButtonClassName, isPlaying && activeChromeButtonClassName)}
+          aria-label={isPlaying ? "Pause animation" : "Play animation"}
+          aria-pressed={isPlaying}
+          title={`${isPlaying ? "Pause" : "Play"} animation${prefersReducedMotion ? " (reduced motion preferred)" : ""}`}
+          onClick={toggleMotion}
         >
-          <Orbit className="h-4 w-4" />
+          {isPlaying ? <Pause /> : <Play />}
         </Button>
 
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={cn(chromeButtonClassName, showGrid && activeChromeButtonClassName)}
-          aria-label="Show grid"
+          aria-label={showGrid ? "Hide coordinate grid" : "Show coordinate grid"}
           aria-pressed={showGrid}
           title={showGrid ? "Hide grid" : "Show grid"}
           onClick={() => onGridToggle(!showGrid)}
         >
-          <Grid3x3 className="h-4 w-4" />
+          <Grid3x3 />
         </Button>
 
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           className={cn(chromeButtonClassName, showAxis && activeChromeButtonClassName)}
-          aria-label="Show axis"
+          aria-label={showAxis ? "Hide coordinate axes" : "Show coordinate axes"}
           aria-pressed={showAxis}
           title={showAxis ? "Hide axis" : "Show axis"}
           onClick={() => onAxisToggle(!showAxis)}
         >
-          <Axis3d className="h-4 w-4" />
+          <Axis3d />
         </Button>
 
         <div aria-hidden="true" className="h-6 w-px shrink-0 bg-border/50" />
@@ -268,7 +288,7 @@ export default function Header({
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-lg"
             className={chromeButtonClassName}
             disabled={!previousSimulation}
             aria-label={
@@ -276,22 +296,26 @@ export default function Header({
                 ? `Previous simulation: ${previousSimulation.title}`
                 : "Previous simulation"
             }
+            title={
+              previousSimulation ? `Previous: ${previousSimulation.title}` : "Previous simulation"
+            }
             onClick={() => previousSimulation && navigate(previousSimulation.href)}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft />
           </Button>
 
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-lg"
             className={chromeButtonClassName}
             disabled={!nextSimulation}
             aria-label={
               nextSimulation ? `Next simulation: ${nextSimulation.title}` : "Next simulation"
             }
+            title={nextSimulation ? `Next: ${nextSimulation.title}` : "Next simulation"}
             onClick={() => nextSimulation && navigate(nextSimulation.href)}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight />
           </Button>
         </div>
       </div>

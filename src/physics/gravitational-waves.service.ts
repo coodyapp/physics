@@ -1,11 +1,23 @@
 import { PHYSICS_CONSTANTS } from "@/utils/constants";
 
+function requirePositive(value: number, name: string): void {
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be finite and positive`);
+}
+
+function requireNonNegative(value: number, name: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be finite and non-negative`);
+  }
+}
+
 /**
  * Chirp mass of a binary system.
  * M_c = (m1 * m2)^(3/5) / (m1 + m2)^(1/5)
  */
 function chirpMass(mass1: number, mass2: number): number {
-  return Math.pow(mass1 * mass2, 3 / 5) / Math.pow(mass1 + mass2, 1 / 5);
+  const larger = Math.max(mass1, mass2);
+  const ratio = Math.min(mass1, mass2) / larger;
+  return larger * Math.exp((3 / 5) * Math.log(ratio) - (1 / 5) * Math.log1p(ratio));
 }
 
 export class GravitationalWavesService {
@@ -19,12 +31,19 @@ export class GravitationalWavesService {
     distance: number,
     frequency: number,
   ): number {
+    requirePositive(mass1, "Mass 1");
+    requirePositive(mass2, "Mass 2");
+    requirePositive(distance, "Distance");
+    requireNonNegative(frequency, "Frequency");
     const { G, c } = PHYSICS_CONSTANTS;
     const mc = chirpMass(mass1, mass2);
-    return (
-      (4 * Math.pow((G * mc) / (c * c), 5 / 3) * Math.pow((Math.PI * frequency) / c, 2 / 3)) /
-      distance
-    );
+    if (frequency === 0) return 0;
+    const logAmplitude =
+      Math.log(4) +
+      (5 / 3) * Math.log((G * mc) / (c * c)) +
+      (2 / 3) * Math.log((Math.PI * frequency) / c) -
+      Math.log(distance);
+    return Math.exp(logAmplitude);
   }
 
   /**
@@ -32,9 +51,15 @@ export class GravitationalWavesService {
    * f = sqrt(G * (m1 + m2) / a^3) / (2 * pi)
    */
   static calculateFrequency(mass1: number, mass2: number, separation: number): number {
+    requirePositive(mass1, "Mass 1");
+    requirePositive(mass2, "Mass 2");
+    requirePositive(separation, "Separation");
     const { G } = PHYSICS_CONSTANTS;
-    const totalMass = mass1 + mass2;
-    return Math.sqrt((G * totalMass) / Math.pow(separation, 3)) / (2 * Math.PI);
+    const larger = Math.max(mass1, mass2);
+    const totalMass = larger * (1 + Math.min(mass1, mass2) / larger);
+    return (
+      Math.exp(0.5 * (Math.log(G) + Math.log(totalMass) - 3 * Math.log(separation))) / (2 * Math.PI)
+    );
   }
 
   /**

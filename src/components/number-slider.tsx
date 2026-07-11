@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { Label } from "@/ui/label";
 import { Slider } from "@/ui/slider";
@@ -12,6 +12,7 @@ interface NumberSliderProps {
   step: number;
   onChange: (value: number) => void;
   formatValue?: (value: number) => ReactNode;
+  ariaValueText?: (value: number) => string;
   className?: string;
 }
 
@@ -29,17 +30,29 @@ export function NumberSlider({
   step,
   onChange,
   formatValue,
+  ariaValueText,
   className,
 }: NumberSliderProps) {
+  const sliderId = useId();
   const displayedValue = formatValue ? formatValue(value) : defaultFormat(value, step);
+  const accessibleValue = ariaValueText
+    ? ariaValueText(value)
+    : typeof displayedValue === "string" || typeof displayedValue === "number"
+      ? String(displayedValue)
+      : defaultFormat(value, step);
 
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between gap-3">
-        <Label className="text-sm">{label}</Label>
+        <Label htmlFor={sliderId} className="text-sm">
+          {label}
+        </Label>
         <span className="text-sm text-muted-foreground">{displayedValue}</span>
       </div>
       <Slider
+        id={sliderId}
+        aria-label={label}
+        aria-valuetext={accessibleValue}
         value={[value]}
         min={min}
         max={max}

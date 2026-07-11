@@ -6,12 +6,25 @@ import { Link } from "react-router-dom";
 import { CoodyLogo } from "@/components/coody-logo";
 import { WaveText } from "@/components/wave-text";
 import { LAB_SIMULATIONS, getLabSimulationPath } from "@/simulations/physics-labs";
+import { LAB_CATEGORY_LABELS } from "@/simulations/physics-labs-data";
 import { cn } from "@/utils/tailwind";
 
 const ROUTED_SIMULATIONS = [
-  { title: "Mass Effect", href: "/simulations/mass-effect" },
-  { title: "Gravitational Waves", href: "/simulations/gravitational-waves" },
-  { title: "Mercury Precession", href: "/simulations/mercury-precession" },
+  {
+    title: "Mass Effect",
+    href: "/simulations/mass-effect",
+    summary: "Explore how mass curves spacetime.",
+  },
+  {
+    title: "Gravitational Waves",
+    href: "/simulations/gravitational-waves",
+    summary: "Observe ripples emitted by orbiting masses.",
+  },
+  {
+    title: "Mercury Precession",
+    href: "/simulations/mercury-precession",
+    summary: "Compare relativistic and Newtonian orbital motion.",
+  },
 ];
 
 const AVAILABLE_SIMULATIONS = [
@@ -19,6 +32,7 @@ const AVAILABLE_SIMULATIONS = [
   ...LAB_SIMULATIONS.map((simulation) => ({
     title: simulation.title,
     href: getLabSimulationPath(simulation),
+    summary: simulation.summary,
   })),
 ];
 const SIMULATION_NAMES = AVAILABLE_SIMULATIONS.map((simulation) => simulation.title);
@@ -106,6 +120,45 @@ function Home() {
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </span>
         </Link>
+
+        <section
+          aria-labelledby="simulation-catalog-title"
+          className="home-appear home-appear-third mx-auto w-full max-w-6xl text-left"
+        >
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-white/45">Explore</p>
+              <h2 id="simulation-catalog-title" className="mt-2 text-2xl font-semibold">
+                Simulation catalog
+              </h2>
+            </div>
+            <span className="text-sm text-white/45">
+              {AVAILABLE_SIMULATIONS.length} experiments
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {AVAILABLE_SIMULATIONS.map((simulation) => (
+              <Link
+                key={simulation.href}
+                to={simulation.href}
+                className="group min-h-32 rounded-2xl border border-white/10 bg-white/[0.04] p-5 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.08] focus-visible:border-white/40"
+              >
+                <h3 className="font-medium text-white">{simulation.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/55">{simulation.summary}</p>
+                <span className="mt-4 inline-flex items-center gap-1 text-xs uppercase tracking-wider text-white/70">
+                  Open{" "}
+                  <ArrowRight
+                    className="size-3 transition group-hover:translate-x-1"
+                    aria-hidden="true"
+                  />
+                </span>
+              </Link>
+            ))}
+          </div>
+          <p className="sr-only">
+            Catalog includes {Object.values(LAB_CATEGORY_LABELS).join(", ")}.
+          </p>
+        </section>
       </main>
 
       <footer className="home-appear home-appear-third relative z-10 flex justify-center px-4 pb-6">

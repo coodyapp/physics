@@ -15,6 +15,9 @@ import {
   getLabSimulationPath,
   type LabSimulationMetadata,
 } from "@/simulations/physics-labs-data";
+import { IMPORTED_LAB_COMPONENTS } from "@/simulations/imported-physics-labs";
+import { useSimulationMotion } from "@/hooks/use-simulation-motion";
+import { SIMULATION_COLORS } from "@/utils/constants";
 
 export {
   LAB_CATEGORY_LABELS,
@@ -23,7 +26,7 @@ export {
 } from "@/simulations/physics-labs-data";
 export type { LabCategory, LabSimulationMetadata } from "@/simulations/physics-labs-data";
 
-interface LabRouteProps {
+export interface LabRouteProps {
   definition: LabDefinition;
 }
 
@@ -33,20 +36,21 @@ export interface LabDefinition extends LabSimulationMetadata {
 
 function useAnimationTime(speed = 1, resetKey = 0) {
   const [time, setTime] = useState(0);
+  const running = useMotionEnabled();
 
   useEffect(() => {
     setTime(0);
   }, [resetKey]);
 
   useFrame((_, delta) => {
-    setTime((value) => value + delta * speed);
+    if (running) setTime((value) => value + delta * speed);
   });
 
   return time;
 }
 
-function hslColor(hue: number, saturation = 85, lightness = 55) {
-  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+export function useMotionEnabled() {
+  return useSimulationMotion().isPlaying;
 }
 
 function clamp(value: number, min = 0, max = 1) {
@@ -67,51 +71,64 @@ function gradientColor(value: number, stops: string[]) {
   return new THREE.Color(stops[index]).lerp(new THREE.Color(stops[index + 1]), localT);
 }
 
-function createSurfaceGeometry({
-  resolution,
-  size,
-  sample,
-}: {
-  resolution: number;
-  size: number;
-  sample: (x: number, z: number) => { height: number; color: THREE.Color };
-}) {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const indices: number[] = [];
+function createDynamicSurfaceGeometry(resolution: number, size: number) {
+  const positions = new Float32Array(resolution * resolution * 3);
+  const colors = new Float32Array(resolution * resolution * 3);
+  const indices = new Uint16Array((resolution - 1) * (resolution - 1) * 6);
   const step = size / (resolution - 1);
   const half = size / 2;
+  let indexOffset = 0;
 
   for (let row = 0; row < resolution; row++) {
-    const z = -half + row * step;
-
     for (let column = 0; column < resolution; column++) {
-      const x = -half + column * step;
-      const { height, color } = sample(x, z);
+      const offset = (row * resolution + column) * 3;
+      positions[offset] = -half + column * step;
+      positions[offset + 2] = -half + row * step;
 
-      positions.push(x, height, z);
-      colors.push(color.r, color.g, color.b);
-    }
-  }
-
-  for (let row = 0; row < resolution - 1; row++) {
-    for (let column = 0; column < resolution - 1; column++) {
-      const a = row * resolution + column;
-      const b = a + 1;
-      const c = a + resolution;
-      const d = c + 1;
-
-      indices.push(a, c, b, b, c, d);
+      if (row < resolution - 1 && column < resolution - 1) {
+        const a = row * resolution + column;
+        const b = a + 1;
+        const c = a + resolution;
+        const d = c + 1;
+        indices.set([a, c, b, b, c, d], indexOffset);
+        indexOffset += 6;
+      }
     }
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setIndex(indices);
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-  return geometry;
+  return { geometry, positions, colors };
+}
+
+function writeHsl(
+  colors: Float32Array,
+  offset: number,
+  hue: number,
+  saturation: number,
+  lightness: number,
+) {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const sector = hue * 6;
+  const secondary = chroma * (1 - Math.abs((sector % 2) - 1));
+  const match = lightness - chroma / 2;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (sector < 1) [red, green] = [chroma, secondary];
+  else if (sector < 2) [red, green] = [secondary, chroma];
+  else if (sector < 3) [green, blue] = [chroma, secondary];
+  else if (sector < 4) [green, blue] = [secondary, chroma];
+  else if (sector < 5) [red, blue] = [secondary, chroma];
+  else [red, blue] = [chroma, secondary];
+
+  colors[offset] = red + match;
+  colors[offset + 1] = green + match;
+  colors[offset + 2] = blue + match;
 }
 
 function circlePoints({
@@ -136,7 +153,7 @@ function circlePoints({
   });
 }
 
-function LabSimulationLayout({
+export function LabSimulationLayout({
   definition,
   controls,
   children,
@@ -216,26 +233,27 @@ function ProjectileScene({
   const vx = speed * Math.cos(angle);
   const vy = speed * Math.sin(angle);
   const flightTime = Math.max(0.1, (2 * vy) / gravity);
-  const range = Math.max(1, vx * flightTime);
-  const maxHeight = Math.max(1, (vy * vy) / (2 * gravity));
+  const worldScale = 0.1;
+  const launchX = -4.5;
   const path = useMemo(() => {
     return Array.from({ length: 80 }, (_, index) => {
       const t = (index / 79) * flightTime;
       const x = vx * t;
       const y = vy * t - 0.5 * gravity * t * t;
 
-      return [(x / range) * 8 - 4, (y / maxHeight) * 3, 0] as [number, number, number];
+      return [launchX + x * worldScale, y * worldScale, 0] as [number, number, number];
     });
-  }, [flightTime, gravity, maxHeight, range, vx, vy]);
+  }, [flightTime, gravity, vx, vy]);
 
   const t = time % flightTime;
-  const px = ((vx * t) / range) * 8 - 4;
-  const py = ((vy * t - 0.5 * gravity * t * t) / maxHeight) * 3;
+  const px = launchX + vx * t * worldScale;
+  const py = (vy * t - 0.5 * gravity * t * t) * worldScale;
+  const velocityScale = 0.16;
 
   return (
     <group>
       <mesh position={[0, -0.06, 0]}>
-        <boxGeometry args={[9, 0.08, 2.8]} />
+        <boxGeometry args={[10.5, 0.08, 2.8]} />
         <meshStandardMaterial color="#1e293b" />
       </mesh>
       <Line points={path} color="#38bdf8" lineWidth={3} />
@@ -246,7 +264,7 @@ function ProjectileScene({
       <Line
         points={[
           [px, py, 0],
-          [px + 0.7, py + 0.35, 0],
+          [px + vx * velocityScale, py + (vy - gravity * t) * velocityScale, 0],
         ]}
         color="#fde68a"
         lineWidth={2}
@@ -259,6 +277,9 @@ function ProjectileMotionLab({ definition }: LabRouteProps) {
   const [launchAngle, setLaunchAngle] = useState(42);
   const [launchSpeed, setLaunchSpeed] = useState(7.4);
   const [gravity, setGravity] = useState(9.8);
+  const angle = (launchAngle * Math.PI) / 180;
+  const flightTime = (2 * launchSpeed * Math.sin(angle)) / gravity;
+  const range = launchSpeed * Math.cos(angle) * flightTime;
 
   return (
     <LabSimulationLayout
@@ -292,6 +313,9 @@ function ProjectileMotionLab({ definition }: LabRouteProps) {
             onChange={setGravity}
             formatValue={(value) => `${value.toFixed(1)} m/s2`}
           />
+          <p className="text-xs text-muted-foreground">
+            Flight: {flightTime.toFixed(2)} s | Range: {range.toFixed(2)} m
+          </p>
         </>
       }
     >
@@ -309,25 +333,40 @@ function SpringMassScene({
   damping: number;
   drive: number;
 }) {
-  const time = useAnimationTime();
+  const running = useMotionEnabled();
   const massRef = useRef<THREE.Mesh>(null);
-  const amplitude = 1.1 * Math.max(0.15, 1 - damping / 1.2) + drive * 0.25;
-  const displacement = amplitude * Math.sin(time * Math.sqrt(stiffness) * 2.4);
-  const massX = 1.6 + displacement;
-  const springPoints = useMemo(() => {
-    const points: [number, number, number][] = [[-3.8, 0, 0]];
-    const turns = 18;
-    for (let i = 1; i <= turns; i++) {
-      const x = -3.8 + (i / turns) * (massX + 3.1);
-      const y = i % 2 === 0 ? 0.22 : -0.22;
-      points.push([x, y, 0]);
-    }
-    points.push([massX - 0.65, 0, 0]);
-    return points;
-  }, [massX]);
+  const stateRef = useRef({ x: 0, v: 0, time: 0, accumulator: 0 });
+  const springPositions = useMemo(() => new Float32Array(20 * 3), []);
+  const springLine = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(springPositions, 3));
+    return new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: "#67e8f9" }));
+  }, [springPositions]);
 
-  useFrame(() => {
+  useEffect(() => {
+    stateRef.current = { x: 0, v: 0, time: 0, accumulator: 0 };
+  }, [stiffness, damping, drive]);
+
+  useFrame((_, delta) => {
+    if (!running) return;
+    const state = stateRef.current;
+    state.accumulator += Math.min(delta, 0.1);
+    const dt = 1 / 120;
+    while (state.accumulator >= dt) {
+      const force = drive * Math.sin(2 * state.time) - damping * state.v - stiffness * state.x;
+      state.v += force * dt;
+      state.x += state.v * dt;
+      state.time += dt;
+      state.accumulator -= dt;
+    }
+    const massX = 1.6 + state.x;
     if (massRef.current) massRef.current.position.x = massX;
+    for (let index = 0; index < 20; index++) {
+      const fraction = index / 19;
+      springPositions[index * 3] = -3.8 + fraction * (massX + 3.15);
+      springPositions[index * 3 + 1] = index === 0 || index === 19 ? 0 : index % 2 ? 0.22 : -0.22;
+    }
+    (springLine.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
   });
 
   return (
@@ -336,8 +375,8 @@ function SpringMassScene({
         <boxGeometry args={[0.18, 2.8, 2.8]} />
         <meshStandardMaterial color="#64748b" />
       </mesh>
-      <Line points={springPoints} color="#67e8f9" lineWidth={3} />
-      <mesh ref={massRef} position={[massX, 0, 0]}>
+      <primitive object={springLine} />
+      <mesh ref={massRef} position={[1.6, 0, 0]}>
         <boxGeometry args={[1.2, 1.2, 1.2]} />
         <meshStandardMaterial color="#f97316" />
       </mesh>
@@ -407,37 +446,66 @@ function PendulumScene({
   damping: number;
   initialAngle: number;
 }) {
-  const time = useAnimationTime();
+  const armRef = useRef<THREE.Group>(null);
+  const running = useMotionEnabled();
+  const stateRef = useRef({ angle: 0, angularVelocity: 0 });
   const angle0 = (initialAngle * Math.PI) / 180;
-  const omega = Math.sqrt(gravity / length);
-  const angle = angle0 * Math.exp(-damping * time * 0.18) * Math.cos(omega * time);
-  const bob: [number, number, number] = [
-    Math.sin(angle) * length * 2.1,
-    -Math.cos(angle) * length * 2.1,
-    0,
-  ];
+  const renderedLength = length * 2.1;
+
+  useEffect(() => {
+    stateRef.current = { angle: angle0, angularVelocity: 0 };
+    if (armRef.current) armRef.current.rotation.z = angle0;
+  }, [angle0, damping, gravity, length]);
+
+  useFrame((_, frameDelta) => {
+    if (!running) return;
+    const delta = Math.min(frameDelta, 0.05);
+    const steps = Math.max(1, Math.ceil(delta / (1 / 120)));
+    const dt = delta / steps;
+    const state = stateRef.current;
+
+    for (let step = 0; step < steps; step++) {
+      state.angularVelocity +=
+        (-(gravity / length) * Math.sin(state.angle) - damping * state.angularVelocity) * dt;
+      state.angle += state.angularVelocity * dt;
+    }
+    if (armRef.current) armRef.current.rotation.z = state.angle;
+  });
 
   return (
     <group position={[0, 2.3, 0]}>
       <mesh>
         <sphereGeometry args={[0.12, 20, 20]} />
-        <meshStandardMaterial color="#67e8f9" emissive="#67e8f9" emissiveIntensity={0.3} />
+        <meshStandardMaterial
+          color={SIMULATION_COLORS.quantum}
+          emissive={SIMULATION_COLORS.quantum}
+          emissiveIntensity={0.3}
+        />
       </mesh>
-      <Line points={[[0, 0, 0], bob]} color="#e2e8f0" lineWidth={2} />
-      <mesh position={bob}>
-        <sphereGeometry args={[0.32, 32, 32]} />
-        <meshStandardMaterial color="#f97316" />
-      </mesh>
+      <group ref={armRef}>
+        <Line
+          points={[
+            [0, 0, 0],
+            [0, -renderedLength, 0],
+          ]}
+          color={SIMULATION_COLORS.foreground}
+          lineWidth={2}
+        />
+        <mesh position={[0, -renderedLength, 0]}>
+          <sphereGeometry args={[0.32, 32, 32]} />
+          <meshStandardMaterial color={SIMULATION_COLORS.active} />
+        </mesh>
+      </group>
       <Line
         points={Array.from({ length: 32 }, (_, index) => {
           const theta = -angle0 + (index / 31) * angle0 * 2;
-          return [Math.sin(theta) * length * 2.1, -Math.cos(theta) * length * 2.1, -0.05] as [
+          return [Math.sin(theta) * renderedLength, -Math.cos(theta) * renderedLength, -0.05] as [
             number,
             number,
             number,
           ];
         })}
-        color="#64748b"
+        color={SIMULATION_COLORS.structure}
         lineWidth={1}
       />
     </group>
@@ -490,6 +558,9 @@ function DampedPendulumLab({ definition }: LabRouteProps) {
             onChange={setInitialAngle}
             formatValue={(value) => `${value.toFixed(0)} deg`}
           />
+          <p className="text-xs text-muted-foreground">
+            Small-angle period: {(2 * Math.PI * Math.sqrt(length / gravity)).toFixed(2)} s
+          </p>
         </>
       }
     >
@@ -536,7 +607,10 @@ function ElectricFieldScene({
       }, new THREE.Vector2());
     }
 
-    return activeCharges.flatMap((charge) => {
+    const positiveCharges = activeCharges.filter((charge) => charge.q > 0);
+    const seedCharges = positiveCharges.length > 0 ? positiveCharges : activeCharges;
+
+    return seedCharges.flatMap((charge) => {
       const seedCount = Math.max(4, Math.round(12 * Math.min(2, Math.abs(charge.q))));
 
       return Array.from({ length: seedCount }, (_, line) => {
@@ -550,7 +624,7 @@ function ElectricFieldScene({
           if (field.lengthSq() < 1e-8) break;
 
           point.add(field.normalize().multiplyScalar(direction * 0.11));
-          points.push([point.x, point.y, Math.sin(step * 0.18 + angle) * 0.12]);
+          points.push([point.x, point.y, 0]);
 
           if (point.length() > 6) break;
           if (
@@ -612,6 +686,9 @@ function ElectricFieldLinesLab({ definition }: LabRouteProps) {
             onChange={setChargeRatio}
             formatValue={(value) => `${value.toFixed(1)} q`}
           />
+          <p className="text-xs text-muted-foreground">
+            Lines follow E: away from positive charge, toward negative charge.
+          </p>
         </>
       }
     >
@@ -629,26 +706,57 @@ function ChargedParticleScene({
   magneticField: number;
   speed: number;
 }) {
-  const time = useAnimationTime(0.8);
-  const radius = Math.max(0.35, (speed * 1.3) / magneticField);
-  const cyclotronFrequency = magneticField * 2.4;
-  const electricDrift = electricField / magneticField;
-  const trail = useMemo(() => {
-    return Array.from({ length: 160 }, (_, index) => {
-      const t = time - (159 - index) * 0.035;
-      return [
-        Math.cos(t * cyclotronFrequency) * radius + electricDrift * t * 0.35,
-        Math.sin(t * cyclotronFrequency) * radius,
-        ((t * speed * 0.45) % 5) - 2.5,
-      ] as [number, number, number];
-    });
-  }, [cyclotronFrequency, electricDrift, radius, speed, time]);
-  const particle = trail[trail.length - 1];
+  const running = useMotionEnabled();
+  const particleRef = useRef<THREE.Mesh>(null);
+  const trail = useMemo(() => new Float32Array(160 * 3), []);
+  const trailLine = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(trail, 3));
+    return new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: "#38bdf8" }));
+  }, [trail]);
+  const state = useRef({
+    position: new THREE.Vector3(-3, 0, 0),
+    velocity: new THREE.Vector3(speed, 0, 0),
+    accumulator: 0,
+  });
+
+  useEffect(() => {
+    state.current = {
+      position: new THREE.Vector3(-3, 0, 0),
+      velocity: new THREE.Vector3(speed, 0, 0),
+      accumulator: 0,
+    };
+    trail.fill(0);
+  }, [electricField, magneticField, speed, trail]);
+
+  useFrame((_, delta) => {
+    if (!running) return;
+    const current = state.current;
+    current.accumulator += Math.min(delta, 0.1);
+    const dt = 1 / 180;
+    while (current.accumulator >= dt) {
+      // Boris rotation preserves speed for magnetic-only motion; q/m = 1, E = +y, B = +z.
+      current.velocity.y += electricField * dt * 0.5;
+      const t = magneticField * dt * 0.5;
+      const s = (2 * t) / (1 + t * t);
+      const vxPrime = current.velocity.x + current.velocity.y * t;
+      const vyPrime = current.velocity.y - current.velocity.x * t;
+      current.velocity.x += vyPrime * s;
+      current.velocity.y -= vxPrime * s;
+      current.velocity.y += electricField * dt * 0.5;
+      current.position.addScaledVector(current.velocity, dt);
+      current.accumulator -= dt;
+    }
+    trail.copyWithin(0, 3);
+    trail.set(current.position.toArray(), trail.length - 3);
+    particleRef.current?.position.copy(current.position);
+    (trailLine.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+  });
 
   return (
     <group>
-      <Line points={trail} color="#38bdf8" lineWidth={2.5} />
-      <mesh position={particle}>
+      <primitive object={trailLine} />
+      <mesh ref={particleRef} position={[-3, 0, 0]}>
         <sphereGeometry args={[0.16, 24, 24]} />
         <meshStandardMaterial color="#f97316" emissive="#f97316" emissiveIntensity={0.5} />
       </mesh>
@@ -657,7 +765,7 @@ function ChargedParticleScene({
           key={index}
           points={[
             [-3 + index, -2.2, -2.2],
-            [-3 + index + electricField, -2.2, -2.2],
+            [-3 + index, -2.2 + electricField, -2.2],
           ]}
           color="#bae6fd"
           lineWidth={1}
@@ -713,31 +821,39 @@ function ChargedParticleMotionLab({ definition }: LabRouteProps) {
   );
 }
 
-function ElectromagneticWaveScene({ frequency, courant }: { frequency: number; courant: number }) {
+function ElectromagneticWaveScene({
+  frequency,
+  amplitude,
+}: {
+  frequency: number;
+  amplitude: number;
+}) {
   const time = useAnimationTime();
+  const waveSpeed = 5.56;
+  const waveNumber = (frequency * Math.PI * 2) / waveSpeed;
   const ePoints = useMemo(
     () =>
       Array.from({ length: 140 }, (_, index) => {
         const x = -5 + (index / 139) * 10;
-        return [x, Math.sin(x * 1.8 - time * frequency * Math.PI * 2) * 1.2 * courant, 0] as [
-          number,
-          number,
-          number,
-        ];
+        return [
+          x,
+          Math.sin(x * waveNumber - time * frequency * Math.PI * 2) * 1.2 * amplitude,
+          0,
+        ] as [number, number, number];
       }),
-    [courant, frequency, time],
+    [amplitude, frequency, time, waveNumber],
   );
   const hPoints = useMemo(
     () =>
       Array.from({ length: 140 }, (_, index) => {
         const x = -5 + (index / 139) * 10;
-        return [x, 0, Math.sin(x * 1.8 - time * frequency * Math.PI * 2) * 1.2 * courant] as [
-          number,
-          number,
-          number,
-        ];
+        return [
+          x,
+          0,
+          Math.sin(x * waveNumber - time * frequency * Math.PI * 2) * 1.2 * amplitude,
+        ] as [number, number, number];
       }),
-    [courant, frequency, time],
+    [amplitude, frequency, time, waveNumber],
   );
 
   return (
@@ -758,7 +874,7 @@ function ElectromagneticWaveScene({ frequency, courant }: { frequency: number; c
 
 function ElectromagneticWaveLab({ definition }: LabRouteProps) {
   const [frequency, setFrequency] = useState(2.2);
-  const [courant, setCourant] = useState(0.92);
+  const [amplitude, setAmplitude] = useState(0.92);
 
   return (
     <LabSimulationLayout
@@ -774,17 +890,21 @@ function ElectromagneticWaveLab({ definition }: LabRouteProps) {
             onChange={setFrequency}
           />
           <NumberSlider
-            label="Courant number"
-            value={courant}
+            label="Field amplitude"
+            value={amplitude}
             min={0.4}
             max={0.98}
             step={0.01}
-            onChange={setCourant}
+            onChange={setAmplitude}
           />
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            Frequency: {frequency.toFixed(1)} Hz | Wave speed: 5.56 scene units/s | Relative
+            amplitude: {amplitude.toFixed(2)}
+          </p>
         </>
       }
     >
-      <ElectromagneticWaveScene frequency={frequency} courant={courant} />
+      <ElectromagneticWaveScene frequency={frequency} amplitude={amplitude} />
     </LabSimulationLayout>
   );
 }
@@ -796,55 +916,50 @@ function HeatDiffusionScene({
   diffusivity: number;
   sourceStrength: number;
 }) {
-  const time = useAnimationTime(0.25);
+  const running = useMotionEnabled();
+  const time = useRef(0);
   const fieldSize = 7.2;
   const plateHalf = fieldSize / 2;
-  const pulseAge = (time % 7) + 0.35;
-  const diffusionLength = 0.55 + Math.sqrt(diffusivity * 18 * pulseAge);
-  const peakTemperature = sourceStrength * (0.9 / (0.9 + diffusivity * pulseAge));
-  const geometry = useMemo(
+  const surface = useMemo(() => createDynamicSurfaceGeometry(49, fieldSize), []);
+  const palette = useMemo(
     () =>
-      createSurfaceGeometry({
-        resolution: 49,
-        size: fieldSize,
-        sample: (x, z) => {
-          const r2 = x * x + z * z;
-          const edgeDistance = plateHalf - Math.max(Math.abs(x), Math.abs(z));
-          const coldBoundary = smoothstep(0, 1.05, edgeDistance);
-          const transientPulse =
-            peakTemperature * Math.exp(-r2 / (diffusionLength * diffusionLength));
-          const sustainedSource = sourceStrength * 0.32 * Math.exp(-r2 / 0.48);
-          const temperature = clamp((transientPulse + sustainedSource) * coldBoundary, 0, 1.25);
-          const normalizedTemperature = clamp(temperature / 1.1);
-
-          return {
-            height: temperature * 1.25,
-            color: gradientColor(normalizedTemperature, [
-              "#0f172a",
-              "#0ea5e9",
-              "#22c55e",
-              "#facc15",
-              "#f97316",
-            ]),
-          };
-        },
-      }),
-    [diffusionLength, fieldSize, peakTemperature, plateHalf, sourceStrength],
+      ["#0f172a", "#0ea5e9", "#22c55e", "#facc15", "#f97316"].map(
+        (value) => new THREE.Color(value),
+      ),
+    [],
   );
-  const contours = useMemo(
-    () =>
-      [0.18, 0.34, 0.52, 0.72].flatMap((level) => {
-        const radiusSquared =
-          -diffusionLength * diffusionLength * Math.log(level / peakTemperature);
-        if (!Number.isFinite(radiusSquared) || radiusSquared <= 0) return [];
+  const parameters = useRef({ diffusivity, sourceStrength });
+  parameters.current = { diffusivity, sourceStrength };
 
-        const radius = Math.sqrt(radiusSquared);
-        if (radius >= plateHalf) return [];
+  useFrame((_, delta) => {
+    if (running) time.current += delta * 0.25;
+    const pulseAge = time.current + 0.35;
+    const initialVariance = 0.55 ** 2;
+    const variance = initialVariance + 4 * parameters.current.diffusivity * pulseAge;
+    const peakTemperature = parameters.current.sourceStrength * (initialVariance / variance);
 
-        return [{ level, radius }];
-      }),
-    [diffusionLength, peakTemperature, plateHalf],
-  );
+    for (let offset = 0; offset < surface.positions.length; offset += 3) {
+      const x = surface.positions[offset];
+      const z = surface.positions[offset + 2];
+      const edgeDistance = plateHalf - Math.max(Math.abs(x), Math.abs(z));
+      const temperature = clamp(
+        peakTemperature * Math.exp(-(x * x + z * z) / variance) * smoothstep(0, 1.05, edgeDistance),
+        0,
+        1.25,
+      );
+      const scaledColor = clamp(temperature / 1.1) * (palette.length - 1);
+      const colorIndex = Math.min(palette.length - 2, Math.floor(scaledColor));
+      const mix = scaledColor - colorIndex;
+      const from = palette[colorIndex];
+      const to = palette[colorIndex + 1];
+      surface.positions[offset + 1] = temperature * 1.25;
+      surface.colors[offset] = from.r + (to.r - from.r) * mix;
+      surface.colors[offset + 1] = from.g + (to.g - from.g) * mix;
+      surface.colors[offset + 2] = from.b + (to.b - from.b) * mix;
+    }
+    (surface.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    (surface.geometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+  });
   const boundary = [
     [-plateHalf, 0.03, -plateHalf],
     [plateHalf, 0.03, -plateHalf],
@@ -855,23 +970,10 @@ function HeatDiffusionScene({
 
   return (
     <group>
-      <mesh geometry={geometry}>
-        <meshStandardMaterial
-          vertexColors
-          roughness={0.62}
-          metalness={0.02}
-          side={THREE.DoubleSide}
-        />
+      <mesh geometry={surface.geometry}>
+        <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
       </mesh>
       <Line points={boundary} color="#94a3b8" lineWidth={1.5} />
-      {contours.map(({ level, radius }) => (
-        <Line
-          key={level}
-          points={circlePoints({ center: [0, 0], radius, y: 0.09 })}
-          color={level > 0.5 ? "#fde68a" : "#7dd3fc"}
-          lineWidth={1.25}
-        />
-      ))}
       <mesh position={[0, 0.08, 0]}>
         <cylinderGeometry args={[0.26, 0.26, 0.08, 48]} />
         <meshStandardMaterial color="#fb923c" emissive="#f97316" emissiveIntensity={0.45} />
@@ -925,20 +1027,56 @@ function IdealGasScene({
   particleCount: number;
   temperature: number;
 }) {
-  const time = useAnimationTime(0.9);
   const count = Math.round(particleCount);
-  const particles = useMemo(
-    () =>
-      Array.from({ length: count }, (_, index) => {
-        const a = index * 12.9898;
-        return {
-          x: Math.sin(time * (0.7 + (index % 5) * 0.09) * Math.sqrt(temperature) + a) * 2.1,
-          y: Math.sin(time * (0.9 + (index % 7) * 0.07) * Math.sqrt(temperature) + a * 0.7) * 1.8,
-          z: Math.cos(time * (0.8 + (index % 3) * 0.11) * Math.sqrt(temperature) + a) * 2.1,
-        };
-      }),
-    [count, temperature, time],
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const running = useMotionEnabled();
+  const accumulator = useRef(0);
+  const particlesRef = useRef(
+    Array.from({ length: 140 }, (_, index) => {
+      let seed = index + 1;
+      const random = () => ((seed = Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+      const gaussian = () =>
+        Math.sqrt(-2 * Math.log(Math.max(random(), 1e-9))) * Math.cos(2 * Math.PI * random());
+      return {
+        position: new THREE.Vector3(
+          ((index * 0.61803398875) % 1) * 4.6 - 2.3,
+          ((index * 0.41421356237) % 1) * 3.6 - 1.8,
+          ((index * 0.73205080757) % 1) * 4.6 - 2.3,
+        ),
+        velocity: new THREE.Vector3(gaussian(), gaussian(), gaussian()),
+      };
+    }),
   );
+  const matrix = useMemo(() => new THREE.Matrix4(), []);
+
+  useFrame((_, frameDelta) => {
+    if (!meshRef.current || !running) return;
+    accumulator.current += Math.min(frameDelta, 0.15);
+    const fixedDt = 1 / 120;
+    const bounds = [2.43, 1.93, 2.43];
+    while (accumulator.current >= fixedDt) {
+      for (let index = 0; index < count; index++) {
+        const particle = particlesRef.current[index];
+        particle.position.addScaledVector(particle.velocity, fixedDt * Math.sqrt(temperature));
+        (["x", "y", "z"] as const).forEach((axis, axisIndex) => {
+          const bound = bounds[axisIndex];
+          while (Math.abs(particle.position[axis]) > bound) {
+            particle.position[axis] =
+              Math.sign(particle.position[axis]) * 2 * bound - particle.position[axis];
+            particle.velocity[axis] *= -1;
+          }
+        });
+      }
+      accumulator.current -= fixedDt;
+    }
+    for (let index = 0; index < count; index++) {
+      const particle = particlesRef.current[index];
+      matrix.makeTranslation(particle.position.x, particle.position.y, particle.position.z);
+      meshRef.current.setMatrixAt(index, matrix);
+    }
+    meshRef.current.count = count;
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
 
   return (
     <group>
@@ -946,12 +1084,10 @@ function IdealGasScene({
         <boxGeometry args={[5, 4, 5]} />
         <meshStandardMaterial color="#1e293b" wireframe transparent opacity={0.32} />
       </mesh>
-      {particles.map((particle, index) => (
-        <mesh key={index} position={[particle.x, particle.y, particle.z]}>
-          <sphereGeometry args={[0.07, 12, 12]} />
-          <meshStandardMaterial color={hslColor(185 + (index % 8) * 9, 90, 62)} />
-        </mesh>
-      ))}
+      <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[0.07, 10, 10]} />
+        <meshStandardMaterial color="#67e8f9" />
+      </instancedMesh>
     </group>
   );
 }
@@ -982,6 +1118,9 @@ function IdealGasLab({ definition }: LabRouteProps) {
             step={0.1}
             onChange={setTemperature}
           />
+          <p className="text-xs text-muted-foreground">
+            Relative RMS speed: {Math.sqrt(3 * temperature).toFixed(2)} | Particles: {particleCount}
+          </p>
         </>
       }
     >
@@ -998,21 +1137,32 @@ function BoltzmannDistributionScene({
   densityPower: number;
 }) {
   const distribution = useMemo(() => {
-    const energyMax = 7.5;
+    const energyMax = Math.max(7.5, temperature * (densityPower + 14));
+    const step = energyMax / 159;
     const samples = Array.from({ length: 160 }, (_, index) => {
       const energy = (index / 159) * energyMax;
-      const densityOfStates = Math.max(energy, 0.03) ** densityPower;
+      const densityOfStates = energy ** densityPower;
       const occupancy = densityOfStates * Math.exp(-energy / temperature);
 
       return { energy, occupancy };
     });
     const maxOccupancy = Math.max(...samples.map((sample) => sample.occupancy), 1e-6);
-    const partition = samples.reduce((sum, sample) => sum + sample.occupancy, 0);
+    const partition =
+      samples.reduce(
+        (sum, sample, index) => sum + sample.occupancy * (index === 0 || index === 159 ? 0.5 : 1),
+        0,
+      ) * step;
     const meanEnergy =
-      samples.reduce((sum, sample) => sum + sample.energy * sample.occupancy, 0) / partition;
+      (samples.reduce(
+        (sum, sample, index) =>
+          sum + sample.energy * sample.occupancy * (index === 0 || index === 159 ? 0.5 : 1),
+        0,
+      ) *
+        step) /
+      partition;
     const points = samples.map(({ energy, occupancy }) => {
       const x = (energy / energyMax) * 7.2 - 3.6;
-      const y = (occupancy / maxOccupancy) * 3.2;
+      const y = (occupancy / partition / (maxOccupancy / partition)) * 3.2;
 
       return [x, y, 0] as [number, number, number];
     });
@@ -1041,7 +1191,7 @@ function BoltzmannDistributionScene({
     areaGeometry.computeVertexNormals();
 
     const ensemble = Array.from({ length: 72 }, (_, index) => {
-      const target = ((index * 0.61803398875) % 1) * partition;
+      const target = ((index * 0.61803398875) % 1) * (partition / step);
       let cumulative = 0;
       const sample =
         samples.find((candidate) => {
@@ -1156,11 +1306,11 @@ function ParticleInBoxScene({ mix, level }: { mix: number; level: number }) {
         const a1 = Math.sqrt(1 - mix);
         const a2 = Math.sqrt(mix);
         const real =
-          a1 * Math.sin(Math.PI * x) * Math.cos(time) +
-          a2 * Math.sin(n2 * Math.PI * x) * Math.cos(n2 * n2 * time);
+          Math.SQRT2 * a1 * Math.sin(Math.PI * x) * Math.cos(time) +
+          Math.SQRT2 * a2 * Math.sin(n2 * Math.PI * x) * Math.cos(n2 * n2 * time);
         const imag =
-          -a1 * Math.sin(Math.PI * x) * Math.sin(time) -
-          a2 * Math.sin(n2 * Math.PI * x) * Math.sin(n2 * n2 * time);
+          -Math.SQRT2 * a1 * Math.sin(Math.PI * x) * Math.sin(time) -
+          Math.SQRT2 * a2 * Math.sin(n2 * Math.PI * x) * Math.sin(n2 * n2 * time);
         const probability = real * real + imag * imag;
         return [x * 8 - 4, probability * 2.5, 0] as [number, number, number];
       }),
@@ -1218,10 +1368,12 @@ function ParticleInBoxLab({ definition }: LabRouteProps) {
 
 function QuantumTunnelingScene({
   barrierHeight,
+  barrierWidth,
   packetEnergy,
   resetKey,
 }: {
   barrierHeight: number;
+  barrierWidth: number;
   packetEnergy: number;
   resetKey: number;
 }) {
@@ -1230,8 +1382,25 @@ function QuantumTunnelingScene({
   const center = -3.5 + phase;
   const barrierX = 0.6;
   const hasScattered = center >= barrierX;
-  const transmission =
-    barrierHeight <= packetEnergy ? 1 : Math.exp(-2.2 * (barrierHeight - packetEnergy));
+  const transmission = (() => {
+    const energy = Math.max(packetEnergy, 1e-6);
+    const height = Math.max(barrierHeight, 1e-6);
+    if (Math.abs(energy - height) < 1e-6) return 1 / (1 + (height * barrierWidth ** 2) / 2);
+    if (energy < height) {
+      const kappa = Math.sqrt(2 * (height - energy));
+      return (
+        1 /
+        (1 +
+          (height ** 2 * Math.sinh(kappa * barrierWidth) ** 2) / (4 * energy * (height - energy)))
+      );
+    }
+    const waveNumber = Math.sqrt(2 * (energy - height));
+    return (
+      1 /
+      (1 +
+        (height ** 2 * Math.sin(waveNumber * barrierWidth) ** 2) / (4 * energy * (energy - height)))
+    );
+  })();
   const reflection = 1 - transmission;
   const points = useMemo(
     () =>
@@ -1254,7 +1423,7 @@ function QuantumTunnelingScene({
   return (
     <group>
       <mesh position={[0.6, barrierHeight * 0.5, 0]}>
-        <boxGeometry args={[0.7, barrierHeight, 1.4]} />
+        <boxGeometry args={[barrierWidth, barrierHeight, 1.4]} />
         <meshStandardMaterial color="#fb7185" transparent opacity={0.38} />
       </mesh>
       <Line points={points} color="#67e8f9" lineWidth={3} />
@@ -1264,6 +1433,7 @@ function QuantumTunnelingScene({
 
 function QuantumTunnelingLab({ definition }: LabRouteProps) {
   const [barrierHeight, setBarrierHeight] = useState(1.4);
+  const [barrierWidth, setBarrierWidth] = useState(0.7);
   const [packetEnergy, setPacketEnergy] = useState(1.1);
   const [resetKey, setResetKey] = useState(0);
 
@@ -1272,6 +1442,15 @@ function QuantumTunnelingLab({ definition }: LabRouteProps) {
       definition={definition}
       controls={
         <>
+          <NumberSlider
+            label="Barrier width"
+            value={barrierWidth}
+            min={0.2}
+            max={1.6}
+            step={0.1}
+            onChange={setBarrierWidth}
+            formatValue={(value) => `${value.toFixed(1)} units`}
+          />
           <NumberSlider
             label="Barrier height"
             value={barrierHeight}
@@ -1300,6 +1479,7 @@ function QuantumTunnelingLab({ definition }: LabRouteProps) {
     >
       <QuantumTunnelingScene
         barrierHeight={barrierHeight}
+        barrierWidth={barrierWidth}
         packetEnergy={packetEnergy}
         resetKey={resetKey}
       />
@@ -1308,89 +1488,56 @@ function QuantumTunnelingLab({ definition }: LabRouteProps) {
 }
 
 function Schrodinger2DScene({ spread, potential }: { spread: number; potential: number }) {
-  const time = useAnimationTime(0.35);
+  const running = useMotionEnabled();
+  const time = useRef(0);
   const fieldSize = 7.2;
   const boundaryHalf = fieldSize / 2;
   const barrierCenter: [number, number] = [1.25, 0];
   const barrierRadius = 0.82;
-  const sigma0 = 0.34 + spread * 4.5;
-  const cycle = time % 9;
-  const packetCenter = -3.15 + cycle * 0.86;
-  const encounter = smoothstep(barrierCenter[0] - 1.05, barrierCenter[0] + 0.35, packetCenter);
-  const transmission = clamp(Math.exp(-potential * 0.68), 0.12, 1);
-  const reflection = 1 - transmission;
-  const sigma = sigma0 * (1 + cycle * 0.055);
-  const waveNumber = 7.2;
-  const geometry = useMemo(
-    () =>
-      createSurfaceGeometry({
-        resolution: 55,
-        size: fieldSize,
-        sample: (x, z) => {
-          const edgeFade =
-            smoothstep(0, 0.55, boundaryHalf - Math.abs(x)) *
-            smoothstep(0, 0.55, boundaryHalf - Math.abs(z));
-          const incidentEnvelope = Math.exp(
-            -(((x - packetCenter) ** 2 + z * z) / (2 * sigma ** 2)),
-          );
-          const reflectedCenter = barrierCenter[0] - (packetCenter - barrierCenter[0]) * 0.72;
-          const reflectedEnvelope =
-            encounter *
-            reflection *
-            Math.exp(-(((x - reflectedCenter) ** 2 + z * z) / (2 * (sigma * 1.08) ** 2))) *
-            smoothstep(barrierCenter[0] + 0.25, barrierCenter[0] - 1.3, x);
-          const transmittedEnvelope =
-            (1 - encounter + encounter * transmission) *
-            incidentEnvelope *
-            smoothstep(barrierCenter[0] - 0.55, barrierCenter[0] + 0.35, x + sigma);
-          const incomingEnvelope = incidentEnvelope * (1 - encounter * 0.55);
-          const interference =
-            1 +
-            0.32 *
-              encounter *
-              reflection *
-              Math.cos(2 * waveNumber * (x - barrierCenter[0]) - time * 5.5) *
-              Math.exp(-((x - barrierCenter[0]) ** 2 + z * z) / 3.2);
-          const barrierProfile = Math.exp(
-            -(
-              ((x - barrierCenter[0]) ** 2 + (z - barrierCenter[1]) ** 2) /
-              (barrierRadius * barrierRadius)
-            ),
-          );
-          const density =
-            clamp(
-              (incomingEnvelope + transmittedEnvelope + reflectedEnvelope) *
-                interference *
-                edgeFade,
-            ) *
-            (1 - clamp(potential * 0.26) * barrierProfile);
-          const phase =
-            waveNumber * x -
-            time * 4.6 +
-            encounter * reflection * Math.atan2(z, x - barrierCenter[0]) +
-            potential * barrierProfile;
-          const phaseHue = (((phase / (Math.PI * 2)) % 1) + 1) % 1;
+  const surface = useMemo(() => createDynamicSurfaceGeometry(55, fieldSize), []);
+  const parameters = useRef({ spread, potential });
+  parameters.current = { spread, potential };
 
-          return {
-            height: density * 1.7,
-            color: new THREE.Color(hslColor(phaseHue * 360, 82, 24 + density * 45)),
-          };
-        },
-      }),
-    [
-      barrierCenter,
-      barrierRadius,
-      boundaryHalf,
-      encounter,
-      fieldSize,
-      packetCenter,
-      potential,
-      reflection,
-      sigma,
-      time,
-      transmission,
-    ],
-  );
+  useFrame((_, delta) => {
+    if (running) time.current += delta * 0.35;
+    const cycle = time.current % 9;
+    const packetCenter = -3.15 + cycle * 0.86;
+    const encounter = smoothstep(barrierCenter[0] - 1.05, barrierCenter[0] + 0.35, packetCenter);
+    const transmission = clamp(Math.exp(-parameters.current.potential * 0.68), 0.12, 1);
+    const reflection = 1 - transmission;
+    const sigma = (0.34 + parameters.current.spread * 4.5) * (1 + cycle * 0.055);
+    const reflectedCenter = barrierCenter[0] - (packetCenter - barrierCenter[0]) * 0.72;
+
+    for (let offset = 0; offset < surface.positions.length; offset += 3) {
+      const x = surface.positions[offset];
+      const z = surface.positions[offset + 2];
+      const edgeFade =
+        smoothstep(0, 0.55, boundaryHalf - Math.abs(x)) *
+        smoothstep(0, 0.55, boundaryHalf - Math.abs(z));
+      const incident =
+        (1 - encounter) * Math.exp(-((x - packetCenter) ** 2 + z * z) / (2 * sigma ** 2));
+      const reflected =
+        encounter * reflection * Math.exp(-((x - reflectedCenter) ** 2 + z * z) / (2 * sigma ** 2));
+      const transmitted =
+        encounter * transmission * Math.exp(-((x - packetCenter) ** 2 + z * z) / (2 * sigma ** 2));
+      const barrierProfile = Math.exp(
+        -((x - barrierCenter[0]) ** 2 + z * z) / (barrierRadius * barrierRadius),
+      );
+      const density =
+        clamp((incident + reflected + transmitted) * edgeFade) *
+        (1 - clamp(parameters.current.potential * 0.26) * barrierProfile);
+      const phase =
+        7.2 * x -
+        time.current * 4.6 +
+        encounter * reflection * Math.atan2(z, x - barrierCenter[0]) +
+        parameters.current.potential * barrierProfile;
+      const hue = (((phase / (Math.PI * 2)) % 1) + 1) % 1;
+      surface.positions[offset + 1] = density * 1.7;
+      writeHsl(surface.colors, offset, hue, 0.82, 0.24 + density * 0.45);
+    }
+    (surface.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    (surface.geometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+  });
   const boundary = [
     [-boundaryHalf, 0.035, -boundaryHalf],
     [boundaryHalf, 0.035, -boundaryHalf],
@@ -1398,50 +1545,12 @@ function Schrodinger2DScene({ spread, potential }: { spread: number; potential: 
     [-boundaryHalf, 0.035, boundaryHalf],
     [-boundaryHalf, 0.035, -boundaryHalf],
   ] as [number, number, number][];
-  const densityContours = useMemo(() => {
-    const incident = [0.28, 0.48, 0.68].map((level) => ({
-      center: [packetCenter, 0] as [number, number],
-      radius: sigma * Math.sqrt(-2 * Math.log(level)),
-      level,
-      color: "#bfdbfe",
-    }));
-    const reflectedCenter = barrierCenter[0] - (packetCenter - barrierCenter[0]) * 0.72;
-    const reflected =
-      encounter > 0.12
-        ? [0.36, 0.58]
-            .map((level) => ({
-              center: [reflectedCenter, 0] as [number, number],
-              radius: sigma * Math.sqrt(-2 * Math.log(level / Math.max(reflection, 0.12))),
-              level,
-              color: "#f0abfc",
-            }))
-            .filter((contour) => Number.isFinite(contour.radius) && contour.radius > 0)
-        : [];
-
-    return [...incident, ...reflected].filter(
-      (contour) => contour.radius > 0.12 && contour.radius < boundaryHalf,
-    );
-  }, [barrierCenter, boundaryHalf, encounter, packetCenter, reflection, sigma]);
-
   return (
     <group>
-      <mesh geometry={geometry}>
-        <meshStandardMaterial
-          vertexColors
-          roughness={0.58}
-          metalness={0.02}
-          side={THREE.DoubleSide}
-        />
+      <mesh geometry={surface.geometry}>
+        <meshBasicMaterial vertexColors side={THREE.DoubleSide} />
       </mesh>
       <Line points={boundary} color="#94a3b8" lineWidth={1.5} />
-      {densityContours.map((contour, index) => (
-        <Line
-          key={`${contour.level}-${index}`}
-          points={circlePoints({ center: contour.center, radius: contour.radius, y: 0.08 })}
-          color={contour.color}
-          lineWidth={1.1}
-        />
-      ))}
       <mesh position={[barrierCenter[0], 0.09, barrierCenter[1]]}>
         <cylinderGeometry args={[barrierRadius, barrierRadius, 0.12 + potential * 0.12, 72]} />
         <meshStandardMaterial color="#fb7185" transparent opacity={0.28} roughness={0.45} />
@@ -1505,12 +1614,15 @@ const LAB_COMPONENTS: Record<string, ComponentType<LabRouteProps>> = {
   "particle-in-box": ParticleInBoxLab,
   "quantum-tunneling": QuantumTunnelingLab,
   "schrodinger-2d": QuantumWavePacket2DLab,
+  ...IMPORTED_LAB_COMPONENTS,
 };
 
-export const LAB_SIMULATIONS: LabDefinition[] = LAB_SIMULATION_METADATA.map((simulation) => ({
-  ...simulation,
-  component: LAB_COMPONENTS[simulation.slug],
-}));
+export const LAB_SIMULATIONS: LabDefinition[] = LAB_SIMULATION_METADATA.map((simulation) => {
+  const component = LAB_COMPONENTS[simulation.slug];
+  if (!component) throw new Error(`Missing lab component for metadata slug: ${simulation.slug}`);
+
+  return { ...simulation, component };
+});
 
 export function PhysicsLabRoute() {
   const params = useParams();

@@ -76,7 +76,7 @@ describe("Mercury precession — simulation units", () => {
     expect(v).toBeCloseTo(Math.sqrt(1 / a), 6);
   });
 
-  it("advances velocity with the full velocity-Verlet kick", () => {
+  it("advances a circular orbit with RK4", () => {
     const radius = 8;
     const dt = 0.1;
     const next = advanceOrbitState(
@@ -90,5 +90,51 @@ describe("Mercury precession — simulation units", () => {
     );
 
     expect(next.velocity.x).toBeCloseTo(-dt / radius ** 2, 4);
+  });
+
+  it("rejects invalid orbit parameters and integration steps", () => {
+    expect(() => calculatePrecessionPerOrbit(0, a, e)).toThrow();
+    expect(() => calculateRealPrecessionPerOrbit(M_sun, a, 1)).toThrow();
+    expect(() => calculateOrbitalVelocity(M_sun, 0, a)).toThrow();
+    expect(() =>
+      advanceOrbitState(
+        { position: new Vector3(a, 0, 0), velocity: new Vector3(0, 1, 0) },
+        M_sun,
+        true,
+        Infinity,
+      ),
+    ).toThrow();
+  });
+
+  it("limits long-run circular-orbit energy drift", () => {
+    let state = {
+      position: new Vector3(a, 0, 0),
+      velocity: new Vector3(0, calculateOrbitalVelocity(M_sun, a, a), 0),
+    };
+    const initialEnergy = state.velocity.lengthSq() / 2 - 1 / state.position.length();
+    for (let i = 0; i < 30_000; i++) state = advanceOrbitState(state, M_sun, false, 1 / 120);
+    const finalEnergy = state.velocity.lengthSq() / 2 - 1 / state.position.length();
+    expect(Math.abs((finalEnergy - initialEnergy) / initialEnergy)).toBeLessThan(1e-8);
+  });
+
+  it("produces frame-rate-independent states when accumulated time is retained", () => {
+    const run = (frameDelta: number) => {
+      let state = {
+        position: new Vector3(a, 0, 0),
+        velocity: new Vector3(0, calculateOrbitalVelocity(M_sun, a, a), 0),
+      };
+      let accumulator = 0;
+      for (let elapsed = 0; elapsed < 2 - 1e-12; elapsed += frameDelta) {
+        accumulator += Math.min(frameDelta, 2 - elapsed) * 50;
+        const steps = Math.floor((accumulator + 1e-12) / (1 / 120));
+        accumulator -= steps / 120;
+        for (let i = 0; i < steps; i++) state = advanceOrbitState(state, M_sun, true, 1 / 120);
+      }
+      return state;
+    };
+    const at30Fps = run(1 / 30);
+    const at144Fps = run(1 / 144);
+    expect(at30Fps.position.distanceTo(at144Fps.position)).toBeLessThan(1e-8);
+    expect(at30Fps.velocity.distanceTo(at144Fps.velocity)).toBeLessThan(1e-8);
   });
 });

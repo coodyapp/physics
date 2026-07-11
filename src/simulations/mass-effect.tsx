@@ -39,7 +39,7 @@ function MassEffectSimulation() {
 
       <div className="flex items-center justify-between">
         <Label htmlFor="curvature-toggle" className="text-sm">
-          Show Curvature
+          Show Gravity-Well Analogy
         </Label>
         <Switch id="curvature-toggle" checked={showCurvature} onCheckedChange={setShowCurvature} />
       </div>
@@ -49,7 +49,7 @@ function MassEffectSimulation() {
   const information = (
     <>
       <p className="text-muted-foreground mb-4">
-        Visualize how mass curves spacetime according to Einstein's General Relativity
+        Explore a gravity-well analogy for how mass affects nearby motion
       </p>
       <div className="space-y-2 text-sm">
         <div>
@@ -63,6 +63,9 @@ function MassEffectSimulation() {
         <p className="text-muted-foreground mt-4">
           The Schwarzschild radius marks the boundary of a black hole's event horizon, where the
           escape velocity equals the speed of light.
+        </p>
+        <p className="text-muted-foreground">
+          Grid depth is a scaled gravitational-potential analogy, not a literal shape of spacetime.
         </p>
       </div>
     </>

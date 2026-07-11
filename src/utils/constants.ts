@@ -29,6 +29,21 @@ export const VISUALIZATION_DEFAULTS = {
   MAX_MESH_SIZE: 5,
 } as const;
 
+export const SIMULATION_COLORS = {
+  positive: "#38bdf8",
+  negative: "#fb7185",
+  active: "#f97316",
+  source: "#fbbf24",
+  sourceEmissive: "#f59e0b",
+  quantum: "#67e8f9",
+  guide: "#94a3b8",
+  structure: "#64748b",
+  surface: "#1e293b",
+  foreground: "#e2e8f0",
+  success: "#22c55e",
+  accent: "#8b5cf6",
+} as const;
+
 export const HERO_CONTENT = {
   badge: "Interactive physics across scales",
   title: {

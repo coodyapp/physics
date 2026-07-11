@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { schwarzschildRadius } from "@/physics/gravity";
-import { PHYSICS_CONSTANTS } from "@/utils/constants";
+import { PHYSICS_CONSTANTS, SIMULATION_COLORS } from "@/utils/constants";
 
 interface CentralMassProps {
   mass: number;
@@ -10,19 +10,24 @@ interface CentralMassProps {
 
 export default function CentralMass({ mass }: CentralMassProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const solarRadius = schwarzschildRadius(PHYSICS_CONSTANTS.M_sun);
-  const radius = Math.max(0.35, 0.32 + (schwarzschildRadius(mass) / solarRadius) * 0.08);
+  const horizonMassScale = schwarzschildRadius(mass) / schwarzschildRadius(PHYSICS_CONSTANTS.M_sun);
+  // Symbolic display radius: cube-root scaling avoids implying event-horizon dimensions.
+  const radius = 0.35 + 0.1 * Math.cbrt(horizonMassScale);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y += 0.005;
+      meshRef.current.rotation.y += delta * 0.3;
     }
   });
 
   return (
     <mesh ref={meshRef}>
       <sphereGeometry args={[radius, 32, 32]} />
-      <meshStandardMaterial color="#fbbf24" emissive="#f59e0b" emissiveIntensity={0.5} />
+      <meshStandardMaterial
+        color={SIMULATION_COLORS.source}
+        emissive={SIMULATION_COLORS.sourceEmissive}
+        emissiveIntensity={0.5}
+      />
     </mesh>
   );
 }

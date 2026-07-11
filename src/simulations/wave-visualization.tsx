@@ -14,8 +14,12 @@ export default function WaveVisualization({ frequency, amplitude }: WaveVisualiz
 
   const geometry = useMemo(() => {
     const size = 20;
-    const resolution = 48;
+    const resolution = 40;
     const geo = new THREE.PlaneGeometry(size, size, resolution, resolution);
+    geo.setAttribute(
+      "color",
+      new THREE.BufferAttribute(new Float32Array((resolution + 1) ** 2 * 3), 3),
+    );
     return geo;
   }, []);
 
@@ -25,7 +29,9 @@ export default function WaveVisualization({ frequency, amplitude }: WaveVisualiz
     timeRef.current += delta;
 
     const positions = meshRef.current.geometry.attributes.position;
-    const colors = new Float32Array(positions.count * 3);
+    const colors = meshRef.current.geometry.attributes.color;
+    const colorArray = colors.array;
+    const amplitudeScale = Math.max(Math.abs(amplitude), Number.EPSILON);
 
     for (let i = 0; i < positions.count; i++) {
       const x = positions.getX(i);
@@ -35,38 +41,29 @@ export default function WaveVisualization({ frequency, amplitude }: WaveVisualiz
       positions.setZ(i, z);
 
       // Color based on displacement
-      const amplitudeScale = Math.max(Math.abs(amplitude), Number.EPSILON);
       const colorIntensity = THREE.MathUtils.clamp(
         (z + amplitudeScale) / (amplitudeScale * 2),
         0,
         1,
       );
-      colors[i * 3] = 0.2 + colorIntensity * 0.5; // R
-      colors[i * 3 + 1] = 0.4 + colorIntensity * 0.3; // G
-      colors[i * 3 + 2] = 0.8; // B
+      colorArray[i * 3] = 0.2 + colorIntensity * 0.5; // R
+      colorArray[i * 3 + 1] = 0.4 + colorIntensity * 0.3; // G
+      colorArray[i * 3 + 2] = 0.8; // B
     }
 
     positions.needsUpdate = true;
-
-    if (!meshRef.current.geometry.attributes.color) {
-      meshRef.current.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    } else {
-      meshRef.current.geometry.attributes.color.array.set(colors);
-      meshRef.current.geometry.attributes.color.needsUpdate = true;
-    }
-
-    meshRef.current.geometry.computeVertexNormals();
+    colors.needsUpdate = true;
   });
 
   return (
-    <mesh ref={meshRef} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]}>
-      <meshStandardMaterial
-        vertexColors
-        wireframe
-        opacity={0.8}
-        transparent
-        side={THREE.DoubleSide}
-      />
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      position={[5, 0, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      scale={0.45}
+    >
+      <meshBasicMaterial vertexColors wireframe opacity={0.8} transparent side={THREE.DoubleSide} />
     </mesh>
   );
 }

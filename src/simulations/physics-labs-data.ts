@@ -50,7 +50,7 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     principle:
       "Hooke's law pulls displacement back toward equilibrium while damping removes mechanical energy.",
     equations: ["m x'' + c x' + kx = F0 sin(omega t)", "U = 1/2 kx^2"],
-    method: "3D oscillator animation with a dynamic spring line and cube mass.",
+    method: "Fixed-step semi-implicit integration of the forced, damped oscillator equation.",
     expectedOutput:
       "The block oscillates around the equilibrium marker while stiffness and damping alter motion.",
   },
@@ -60,10 +60,88 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     title: "Damped Pendulum",
     summary: "Length, gravity, damping, and initial angle control pendulum motion.",
     principle:
-      "For small angles, a pendulum behaves like a harmonic oscillator with period set by length and gravity.",
+      "A pendulum's restoring torque follows sin(theta); its period approaches the harmonic result only at small angles.",
     equations: ["theta'' + (g/L) sin(theta) = -b theta'", "T ~= 2 pi sqrt(L/g)"],
-    method: "Damped small-angle oscillator rendered as a 3D rod, bob, and arc envelope.",
+    method:
+      "Fixed-substep semi-implicit Euler integration of the nonlinear damped pendulum equation.",
     expectedOutput: "The bob swings through a visible arc and decays faster as damping rises.",
+  },
+  {
+    category: "mechanics",
+    slug: "keplers-laws",
+    title: "Kepler's Laws",
+    summary:
+      "An orbiting planet reveals elliptical paths, changing orbital speed, and period scaling.",
+    principle:
+      "Gravity produces elliptical orbits with equal areas swept in equal times and T squared proportional to a cubed.",
+    equations: ["r = a(1-e^2)/(1+e cos(theta))", "dA/dt = constant", "T^2 = 4 pi^2 a^3/(GM)"],
+    method: "Analytic Kepler orbit sampled by eccentric anomaly with live swept-area sectors.",
+    expectedOutput:
+      "The planet accelerates near perihelion while equal-time sectors retain equal area.",
+  },
+  {
+    category: "mechanics",
+    slug: "solar-system",
+    title: "My Solar System",
+    summary: "Two gravitating bodies orbit their shared center of mass.",
+    principle:
+      "Every body attracts every other body, conserving momentum around the center of mass.",
+    equations: [
+      "F_ij = G m_i m_j r_ij/|r_ij|^3",
+      "R_cm = sum(m_i r_i)/sum(m_i)",
+      "v_c = sqrt(GM/r)",
+    ],
+    method: "Scaled binary orbit with mass-dependent barycentric radii and persistent trails.",
+    expectedOutput:
+      "Both bodies circle a fixed barycenter; mass ratio changes each orbital radius.",
+  },
+  {
+    category: "mechanics",
+    slug: "balancing-torque",
+    title: "Balancing Act",
+    summary: "Masses placed around a fulcrum rotate a plank according to net torque.",
+    principle: "A lever balances when clockwise and counterclockwise moments cancel.",
+    equations: ["tau = r F", "sum(tau) = I alpha", "m1 r1 = m2 r2"],
+    method: "Damped rotational response driven by two adjustable point-load torques.",
+    expectedOutput:
+      "The plank settles level for equal moments and tips toward the stronger moment otherwise.",
+  },
+  {
+    category: "mechanics",
+    slug: "projectile-data-lab",
+    title: "Projectile Data Lab",
+    summary: "Repeated launches turn uncertain initial speed into a landing distribution.",
+    principle: "Small launch variations propagate nonlinearly into range measurements.",
+    equations: ["R = v0^2 sin(2 theta)/g", "mean(R) = sum(R_i)/N", "sigma^2 = sum((R_i-mean)^2)/N"],
+    method: "Deterministic seeded samples plotted as trajectories, landing marks, and a histogram.",
+    expectedOutput: "Increasing spread widens the landing cluster and range histogram.",
+  },
+  {
+    category: "mechanics",
+    slug: "sound-waves",
+    title: "Sound Waves",
+    summary: "Longitudinal pressure waves propagate from an oscillating loudspeaker.",
+    principle:
+      "Frequency controls wavelength while amplitude controls pressure variation and particle excursion.",
+    equations: ["p(x,t) = p0 + A sin(kx-omega t)", "v = f lambda", "I proportional to A^2"],
+    method: "Animated particle rows and pressure wavefronts sampled from a traveling sinusoid.",
+    expectedOutput:
+      "Higher frequency packs wavefronts closer; larger amplitude increases particle motion.",
+  },
+  {
+    category: "mechanics",
+    slug: "buoyancy",
+    title: "Buoyancy",
+    summary: "A block floats or sinks according to object and fluid density.",
+    principle: "Displaced fluid supplies an upward force equal to its weight.",
+    equations: [
+      "F_b = rho_fluid g V_displaced",
+      "F_g = rho_object g V",
+      "V_sub/V = rho_object/rho_fluid",
+    ],
+    method: "Damped vertical motion toward density-dependent floating equilibrium.",
+    expectedOutput:
+      "Light blocks float partly submerged while dense blocks settle at the tank bottom.",
   },
   {
     category: "electromagnetism",
@@ -73,9 +151,10 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     principle:
       "Coulomb fields add linearly, so the net electric field is the vector sum of each charge contribution.",
     equations: ["E(r) = sum_i k q_i (r - r_i) / |r - r_i|^3", "F = qE"],
-    method: "3D streamline curves seeded around each charge with charge-dependent bending.",
+    method:
+      "Planar Coulomb-field streamlines traced along E from positive charges (or backward from negatives).",
     expectedOutput:
-      "Cyan and rose field lines emerge from the charge spheres and change as spacing or polarity changes.",
+      "Planar field lines run away from positive charge and toward negative charge as spacing or polarity changes.",
   },
   {
     category: "electromagnetism",
@@ -85,20 +164,26 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     principle:
       "The Lorentz force bends velocity perpendicular to B while E accelerates along its direction.",
     equations: ["m dv/dt = q(E + v x B)", "dr/dt = v"],
-    method: "Parametric 3D helical-drift trajectory driven by field controls.",
+    method: "Fixed-step Boris integration of the Lorentz-force equation with q/m = 1.",
     expectedOutput:
-      "The particle leaves a 3D cyan trail whose radius and drift change with E and B.",
+      "The particle leaves a continuous cyan trail; electric acceleration and magnetic curvature follow field signs.",
   },
   {
     category: "electromagnetism",
     slug: "em-wave-propagation",
     title: "EM Wave Propagation",
     summary: "Electric and magnetic waves propagate as perpendicular 3D fields.",
-    principle: "Maxwell curl equations couple E and H fields so changes in one drive the other.",
-    equations: ["dE/dt = c^2 dB/dx", "dB/dt = -dE/dx"],
-    method: "Animated 3D field curves with E and H components perpendicular to propagation.",
+    principle:
+      "In a plane wave, electric and magnetic fields are mutually perpendicular and transverse to propagation.",
+    equations: [
+      "E = E0 y-hat sin(kx - omega t)",
+      "B = (E0/c) z-hat sin(kx - omega t)",
+      "c = omega/k",
+    ],
+    method:
+      "Analytic sinusoidal plane-wave visualization; no FDTD grid or Courant stability model.",
     expectedOutput:
-      "Cyan and rose waves travel along the same axis with a visible phase relationship.",
+      "Cyan E (+y) and rose B (+z) stay in phase and propagate along +x at fixed display speed.",
   },
   {
     category: "thermodynamics",
@@ -109,7 +194,7 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
       "Heat flows from high temperature to low temperature according to the temperature Laplacian.",
     equations: ["dT/dt = alpha (d2T/dx2 + d2T/dy2)"],
     method:
-      "Smooth temperature field with a fixed cold boundary, a central heat source, and isotherm contours.",
+      "Continuous analytic Gaussian heat kernel with cold-edge fade; contours use the same temperature field.",
     expectedOutput:
       "A warm region diffuses outward from the source while the square boundary remains visibly cooler.",
   },
@@ -120,7 +205,8 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     summary: "Particles move in a 3D box and form a kinetic gas cloud.",
     principle: "Microscopic elastic motion produces macroscopic pressure and temperature behavior.",
     equations: ["PV = NkT", "1/2 m <v^2> proportional to T"],
-    method: "Deterministic 3D particle cloud constrained inside a transparent box.",
+    method:
+      "Seeded Maxwell-Boltzmann velocities advanced by a fixed-step accumulator with specular wall reflection.",
     expectedOutput:
       "Particles move faster and fill the box more energetically as temperature rises.",
   },
@@ -148,7 +234,8 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
       "E_n proportional to n^2",
       "|psi|^2 is probability density",
     ],
-    method: "3D probability-density curve between two wall meshes.",
+    method:
+      "Normalized infinite-well basis superposition sampled as a 3D probability-density curve.",
     expectedOutput:
       "The cyan density curve oscillates as the ground state interferes with a selected excited state.",
   },
@@ -160,8 +247,10 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
     principle:
       "The Schrodinger equation allows nonzero probability inside and beyond classically forbidden barriers.",
     equations: ["i dpsi/dt = -1/2 d2psi/dx2 + V(x) psi", "rho = |psi|^2"],
-    method: "3D probability curve moving through a translucent potential wall.",
-    expectedOutput: "A cyan packet interacts with the rose barrier and leaves a transmitted tail.",
+    method:
+      "Analytic rectangular-barrier transmission (including width and above-barrier reflection) drives heuristic Gaussian density envelopes.",
+    expectedOutput:
+      "A cyan density envelope splits visually into reflected and transmitted portions at the barrier.",
   },
   {
     category: "quantum-mechanics",
@@ -172,7 +261,7 @@ export const LAB_SIMULATIONS: LabSimulationMetadata[] = [
       "The 2D time-dependent Schrodinger equation disperses and scatters probability density.",
     equations: ["i dpsi/dt = -1/2 Laplacian(psi) + V(x,y) psi", "rho(x,y) = |psi|^2"],
     method:
-      "Smooth probability-density surface with phase coloring, density contours, boundaries, and a circular potential barrier.",
+      "Heuristic Gaussian density and phase visualization with scripted reflection and transmission; not a 2D PDE solve.",
     expectedOutput:
       "The packet spreads, scatters from the barrier, and separates into reflected and transmitted components.",
   },

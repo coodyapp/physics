@@ -244,5 +244,14 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+
+    .home-appear {
+      opacity: 1;
+      transform: none;
+    }
+
+    .home-marquee-track {
+      animation: none !important;
+    }
   }
 }
